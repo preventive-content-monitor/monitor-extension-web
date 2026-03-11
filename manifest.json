@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Guardian - Proteção Familiar",
+  "version": "0.2.0",
+  "description": "Proteção digital para crianças e adolescentes. Monitora e filtra conteúdo impróprio.",
+  "action": { "default_title": "Guardian" },
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "tabs",
+    "webNavigation",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background/serviceWorker.js",
+    "type": "module"
+  },
+  "options_page": "src/options/options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content/sanitizer.js",
+        "src/content/searchDetector.js",
+        "src/content/pageObserver.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/blocked/blocked.html", "src/blocked/blocked.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

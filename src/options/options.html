@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="utf-8" />
+    <title>Guardian - Proteção Familiar</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-content">
+        <div class="logo">
+          <span class="logo-icon">🛡️</span>
+          <div>
+            <h1>Guardian</h1>
+            <p class="tagline">Proteção digital para sua família</p>
+          </div>
+        </div>
+        <div class="status-badge" id="statusBadge">
+          <span class="status-dot"></span>
+          <span id="statusText">Carregando...</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- ============ LOGIN/REGISTRO ============ -->
+      <section class="card card-highlight login-card" id="authCard">
+        <div class="card-header">
+          <span class="step-number">🔐</span>
+          <div>
+            <h2>Acesso do Responsável</h2>
+            <p>Entre com sua conta para vincular este dispositivo</p>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Não logado -->
+          <div id="notLoggedIn">
+            <!-- Tabs Login/Registro -->
+            <div class="auth-tabs">
+              <button class="auth-tab active" data-tab="login">Entrar</button>
+              <button class="auth-tab" data-tab="register">Criar Conta</button>
+            </div>
+
+            <!-- Form Login -->
+            <div class="auth-form" id="loginForm">
+              <div class="form-group">
+                <label for="loginEmail">Email</label>
+                <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email" />
+              </div>
+              <div class="form-group">
+                <label for="loginPassword">Senha</label>
+                <input type="password" id="loginPassword" placeholder="••••••" autocomplete="current-password" />
+              </div>
+              <p class="error-message" id="loginError"></p>
+              <button class="btn btn-primary btn-large btn-full" id="loginBtn">
+                <span class="btn-icon">🔓</span>
+                Entrar
+              </button>
+            </div>
+
+            <!-- Form Registro -->
+            <div class="auth-form" id="registerForm" style="display: none;">
+              <div class="form-group">
+                <label for="registerEmail">Email</label>
+                <input type="email" id="registerEmail" placeholder="seu@email.com" autocomplete="email" />
+              </div>
+              <div class="form-group">
+                <label for="registerPassword">Senha</label>
+                <input type="password" id="registerPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+              </div>
+              <div class="form-group">
+                <label for="registerPasswordConfirm">Confirmar Senha</label>
+                <input type="password" id="registerPasswordConfirm" placeholder="Repita a senha" autocomplete="new-password" />
+              </div>
+              <p class="error-message" id="registerError"></p>
+              <button class="btn btn-primary btn-large btn-full" id="registerBtn">
+                <span class="btn-icon">📝</span>
+                Criar Conta
+              </button>
+            </div>
+          </div>
+
+          <!-- Logado -->
+          <div id="loggedIn" class="logged-in-state" style="display: none;">
+            <div class="logged-info">
+              <div class="logged-avatar">👤</div>
+              <div class="logged-details">
+                <p class="logged-label">Conectado como</p>
+                <p class="logged-email" id="loggedEmail">-</p>
+              </div>
+              <span class="logged-badge">✓ Autenticado</span>
+            </div>
+            <button class="btn btn-text btn-small" id="logoutBtn">
+              Sair da conta
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ VINCULAR DISPOSITIVO ============ -->
+      <section class="card card-highlight" id="connectionCard">
+        <div class="card-header">
+          <span class="step-number">🔗</span>
+          <div>
+            <h2>Vincular Dispositivo</h2>
+            <p>Conecte este navegador ao perfil do seu filho</p>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <!-- Não conectado -->
+          <div id="notConnected">
+            <div class="connection-guide">
+              <div class="guide-step">
+                <span class="guide-icon">🌐</span>
+                <p>Acesse o painel Guardian</p>
+              </div>
+              <div class="guide-arrow">→</div>
+              <div class="guide-step">
+                <span class="guide-icon">🔢</span>
+                <p>Gere um código de vinculação</p>
+              </div>
+              <div class="guide-arrow">→</div>
+              <div class="guide-step">
+                <span class="guide-icon">⬇️</span>
+                <p>Digite o código aqui</p>
+              </div>
+            </div>
+
+            <div class="code-input-area">
+              <label for="connectionCode">Código de 6 caracteres:</label>
+              <div class="code-input-row">
+                <input 
+                  type="text" 
+                  id="connectionCode" 
+                  maxlength="6" 
+                  placeholder="ABC123"
+                  autocomplete="off"
+                  spellcheck="false"
+                  style="text-transform: uppercase; letter-spacing: 2px; font-size: 1.25rem; text-align: center;"
+                />
+                <button class="btn btn-primary btn-large" id="connectBtn">
+                  <span class="btn-icon">🔗</span>
+                  Conectar
+                </button>
+              </div>
+              <p class="error-message" id="connectionError"></p>
+            </div>
+          </div>
+
+          <!-- Conectado -->
+          <div id="connected" class="connected-state" style="display: none;">
+            <div class="connected-info">
+              <div class="connected-avatar">👦</div>
+              <div class="connected-details">
+                <p class="connected-label">Protegendo</p>
+                <p class="connected-name" id="childName">-</p>
+                <p class="connected-since">Desde: <span id="connectedSince">-</span></p>
+              </div>
+              <span class="connected-badge">✓ Ativo</span>
+            </div>
+            <button class="btn btn-text btn-danger" id="disconnectBtn">
+              Desconectar dispositivo
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ STATUS DA PROTEÇÃO ============ -->
+      <section class="card" id="statusCard">
+        <div class="card-header">
+          <span class="step-number">📊</span>
+          <div>
+            <h2>Status da Proteção</h2>
+            <p>Informações sobre a proteção ativa</p>
+          </div>
+        </div>
+
+        <div class="card-body">
+          <div id="protectionStatus">
+            <div class="status-grid">
+              <div class="status-item">
+                <span class="status-label">Modo</span>
+                <span class="status-value" id="policyMode">-</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Sites bloqueados</span>
+                <span class="status-value" id="blockedCount">-</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Última sincronização</span>
+                <span class="status-value" id="lastSync">-</span>
+              </div>
+            </div>
+            
+            <button class="btn btn-secondary btn-full" id="syncNowBtn" style="margin-bottom: 1rem;">
+              <span class="btn-icon">🔄</span>
+              Sincronizar Agora
+            </button>
+            
+            <div class="dashboard-link">
+              <p>Para configurar políticas, sites bloqueados e horários:</p>
+              <a href="http://localhost:5500/dashboard/index.html" target="_blank" class="btn btn-secondary">
+                <span class="btn-icon">🖥️</span>
+                Abrir Painel Guardian
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ Configurações do Servidor ============ -->
+      <div class="advanced-section">
+        <button class="advanced-toggle" id="toggleAdvanced">
+          <span>⚙️ Configurações do servidor</span>
+          <span class="collapse-icon">▼</span>
+        </button>
+
+        <div class="advanced-content" id="advancedContent" style="display: none;">
+          <section class="card card-muted">
+            <div class="advanced-option">
+              <label>URL do servidor:</label>
+              <input type="text" id="backendUrl" placeholder="http://localhost:8080" />
+              <p class="help-text">Deixe em branco para usar o servidor padrão</p>
+            </div>
+
+            <div class="advanced-actions">
+              <button class="btn btn-text" id="testBackend">🔍 Testar conexão</button>
+              <button class="btn btn-primary" id="saveServerBtn">💾 Salvar</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- Toast de feedback -->
+    <div class="toast" id="toast">
+      <span class="toast-icon">✓</span>
+      <span class="toast-message" id="toastMessage">Salvo com sucesso!</span>
+    </div>
+
+    <!-- Modal de confirmação -->
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal">
+        <div class="modal-icon" id="modalIcon">⚠️</div>
+        <h3 class="modal-title" id="modalTitle">Confirmar ação</h3>
+        <p class="modal-message" id="modalMessage">Tem certeza?</p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" id="modalCancel">Cancelar</button>
+          <button class="btn btn-primary btn-danger" id="modalConfirm">Confirmar</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
