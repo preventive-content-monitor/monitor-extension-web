@@ -50,6 +50,19 @@ export async function syncPolicy() {
     
     // protectionEnabled pode não vir do backend - assume true por padrão
     const protectionEnabled = backendPolicy.protectionEnabled !== false;
+
+    const dependentNickname =
+      typeof backendPolicy.nomeDependente === "string"
+        ? backendPolicy.nomeDependente.trim()
+        : "";
+
+    // Mantem o nome do dependente atualizado para exibir corretamente na options page
+    if (dependentNickname) {
+      const { dependentNickname: currentNickname } = await chrome.storage.sync.get(["dependentNickname"]);
+      if (currentNickname !== dependentNickname) {
+        await chrome.storage.sync.set({ dependentNickname });
+      }
+    }
     
     console.log("[Guardian] Parsed policy - blocked:", blockedDomains, "allowed:", allowedDomains, "enabled:", protectionEnabled);
     
@@ -64,6 +77,7 @@ export async function syncPolicy() {
       blockedDomains,
       allowedDomains,
       protectionEnabled,
+      nomeDependente: dependentNickname,
       schoolModeEnabled: backendPolicy.schoolModeEnabled || false,
       schoolStart: backendPolicy.schoolStart || "07:00",
       schoolEnd: backendPolicy.schoolEnd || "17:00",

@@ -159,7 +159,11 @@ async function loadConnectionStatus() {
     if (response?.enrolled) {
       $("#notConnected").style.display = "none";
       $("#connected").style.display = "block";
-      $("#childName").textContent = response.dependentNickname || "Dependente";
+      const dependentName =
+        typeof response.dependentNickname === "string"
+          ? response.dependentNickname.trim()
+          : "";
+      $("#childName").textContent = dependentName || "Dependente";
       $("#connectedSince").textContent = response.enrolledAt 
         ? new Date(response.enrolledAt).toLocaleDateString("pt-BR")
         : "-";

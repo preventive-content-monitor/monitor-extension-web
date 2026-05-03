@@ -241,11 +241,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const enrolled = await isEnrolled();
         if (enrolled) {
           const info = await getEnrollmentInfo();
+          const { cachedPolicy } = await chrome.storage.local.get(["cachedPolicy"]);
+          const policyDependentName =
+            typeof cachedPolicy?.policy?.nomeDependente === "string"
+              ? cachedPolicy.policy.nomeDependente.trim()
+              : "";
+          const dependentNickname =
+            info.dependentNickname || s.dependentNickname || policyDependentName;
+
+          if (!info.dependentNickname && policyDependentName && s.dependentNickname !== policyDependentName) {
+            await chrome.storage.sync.set({ dependentNickname: policyDependentName });
+          }
+
           sendResponse({ 
             ok: true, 
             enrolled: true,
             deviceId: s.deviceId,
-            dependentNickname: info.dependentNickname || s.dependentNickname,
+            dependentNickname,
             enrolledAt: s.enrolledAt
           });
         } else {
