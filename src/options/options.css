@@ -1268,12 +1268,12 @@ body:not(.logged-in) .card:not(#authCard) {
 }
 
 .status-badge.status-inactive {
-  background: var(--warning-light);
-  border-color: var(--warning);
+  background: var(--warning);
+  border-color: var(--warning-light);
 }
 
 .status-badge.status-inactive .status-dot {
-  background: var(--warning);
+  background: var(--warning-light);
 }
 
 @keyframes pulse {

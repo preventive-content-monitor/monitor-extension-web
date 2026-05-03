@@ -1,27 +1,40 @@
 import { API_BASE_URL } from "../shared/constants.js";
 
+function buildUrl(baseUrl, path) {
+  return `${(baseUrl || API_BASE_URL).replace(/\/+$/, "")}${path}`;
+}
+
+function extractApiErrorMessage(payload, fallback) {
+  if (!payload || typeof payload !== "object") return fallback;
+  return payload.mensagem || payload.message || payload.erro || fallback;
+}
+
+async function readErrorPayload(res) {
+  const payload = await res.json().catch(() => null);
+  return extractApiErrorMessage(payload, `Request failed: ${res.status}`);
+}
+
 /**
  * Autentica usuário e retorna JWT
- * POST /api/auth/login
+ * POST /api/autenticacao/entrar
  */
 export async function loginUser(email, password, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/auth/login`;
+  const url = buildUrl(baseUrl, "/api/autenticacao/entrar");
 
   console.log("[Guardian] Logging in:", email);
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, senha: password }),
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
+    const errorMessage = await readErrorPayload(res);
     if (res.status === 401) {
       throw new Error("Email ou senha incorretos");
     }
-    throw new Error(error.message || `Login failed: ${res.status}`);
+    throw new Error(errorMessage);
   }
 
   return await res.json(); // { token: "..." }
@@ -29,26 +42,25 @@ export async function loginUser(email, password, baseUrl) {
 
 /**
  * Registra novo usuário
- * POST /api/auth/register
+ * POST /api/autenticacao/registrar
  */
 export async function registerUser(email, password, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/auth/register`;
+  const url = buildUrl(baseUrl, "/api/autenticacao/registrar");
 
   console.log("[Guardian] Registering:", email);
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, senha: password }),
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
+    const errorMessage = await readErrorPayload(res);
     if (res.status === 409) {
       throw new Error("Este email já está cadastrado");
     }
-    throw new Error(error.message || `Register failed: ${res.status}`);
+    throw new Error(errorMessage);
   }
 
   return true;
@@ -56,20 +68,25 @@ export async function registerUser(email, password, baseUrl) {
 
 /**
  * Envia lote de eventos para o backend Guardian
- * POST /api/events/batch
+ * POST /api/eventos/lote
  */
 export async function postEventsBatch(deviceId, events, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/events/batch`;
+  const url = buildUrl(baseUrl, "/api/eventos/lote");
+
+  const toBackendEventType = (eventType) => {
+    if (eventType === "BLOCK_ATTEMPT") return "BLOCK_ATTEMPT";
+    if (eventType === "PERMISSION_REQUEST") return "PERMISSION_REQUEST";
+    return "NAVIGATION";
+  };
   
   const payload = {
-    deviceId,
-    events: events.map(e => ({
-      type: e.type,
+    dispositivoId: deviceId,
+    eventos: events.map(e => ({
+      tipo: toBackendEventType(e.type),
       url: e.url,
-      title: e.title || "",
-      occurredAt: e.occurredAt || new Date(e.ts).toISOString(),
-      metadata: e.metadata || null,
+      titulo: e.title || "",
+      ocorridoEm: e.occurredAt || new Date(e.ts).toISOString(),
+      metadados: e.metadata || {},
     })),
   };
 
@@ -80,8 +97,8 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
   });
 
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`POST /api/events/batch failed: ${res.status} ${txt}`);
+    const errorMessage = await readErrorPayload(res);
+    throw new Error(`POST /api/eventos/lote failed: ${res.status} ${errorMessage}`);
   }
 
   return await res.json();
@@ -89,23 +106,22 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
 
 /**
  * Vincula dispositivo usando código de enrollment
- * POST /api/devices/enroll
+ * POST /api/dispositivos/vincular
  */
 export async function enrollDevice(code, deviceName, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/devices/enroll`;
+  const url = buildUrl(baseUrl, "/api/dispositivos/vincular");
 
   console.log("[Guardian] Enrolling device:", { code, deviceName, url });
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code, deviceName }),
+    body: JSON.stringify({ codigo: code, nomeDispositivo: deviceName }),
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.message || `Enrollment failed: ${res.status}`);
+    const errorMessage = await readErrorPayload(res);
+    throw new Error(errorMessage || `Enrollment failed: ${res.status}`);
   }
 
   return await res.json();
@@ -113,12 +129,11 @@ export async function enrollDevice(code, deviceName, baseUrl) {
 
 /**
  * Busca política atual para o dispositivo
- * GET /api/policy/current?deviceId=...
+ * GET /api/politica/atual?dispositivoId=...
  * Endpoint público (sem autenticação)
  */
 export async function fetchPolicy(deviceId, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/policy/current?deviceId=${deviceId}`;
+  const url = buildUrl(baseUrl, `/api/politica/atual?dispositivoId=${encodeURIComponent(deviceId)}`);
 
   console.log("[Guardian] Fetching policy:", url);
 
@@ -130,32 +145,48 @@ export async function fetchPolicy(deviceId, baseUrl) {
   });
 
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`GET /api/policy/current failed: ${res.status} ${txt}`);
+    const errorMessage = await readErrorPayload(res);
+    throw new Error(`GET /api/politica/atual failed: ${res.status} ${errorMessage}`);
   }
 
   const policy = await res.json();
-  
-  // Parse blockedDomains se vier como string JSON
-  if (typeof policy.blockedDomains === "string") {
+
+  let blockedDomains = [];
+  if (typeof policy.dominiosBloqueados === "string") {
     try {
-      policy.blockedDomains = JSON.parse(policy.blockedDomains);
+      blockedDomains = JSON.parse(policy.dominiosBloqueados);
     } catch {
-      policy.blockedDomains = [];
+      blockedDomains = [];
     }
   }
 
-  return policy;
+  let allowedDomains = [];
+  if (typeof policy.dominiosPermitidos === "string") {
+    try {
+      allowedDomains = JSON.parse(policy.dominiosPermitidos);
+    } catch {
+      allowedDomains = [];
+    }
+  }
+
+  return {
+    ...policy,
+    blockedDomains: Array.isArray(blockedDomains) ? blockedDomains : [],
+    allowedDomains: Array.isArray(allowedDomains) ? allowedDomains : [],
+    riskThreshold: policy.limiteRisco ?? 50,
+    schoolModeEnabled: policy.modoEscolaAtivo === true,
+    schoolStart: policy.escolaInicio || "07:00",
+    schoolEnd: policy.escolaFim || "17:00",
+  };
 }
 
 /**
  * Atualiza política no backend
- * PUT /api/policy?deviceId=...
+ * PUT /api/politica?dispositivoId=...
  * Requer JWT token
  */
 export async function updatePolicy(deviceId, policyData, token, baseUrl) {
-  const base = baseUrl || API_BASE_URL;
-  const url = `${base.replace(/\/+$/, "")}/api/policy?deviceId=${deviceId}`;
+  const url = buildUrl(baseUrl, `/api/politica?dispositivoId=${encodeURIComponent(deviceId)}`);
 
   console.log("[Guardian] Updating policy:", url, policyData);
 
@@ -163,21 +194,31 @@ export async function updatePolicy(deviceId, policyData, token, baseUrl) {
     throw new Error("Token JWT necessário para atualizar política");
   }
 
+  const payload = {
+    modo: policyData.mode,
+    limiteRisco: policyData.riskThreshold,
+    dominiosBloqueados: Array.isArray(policyData.blockedDomains) ? policyData.blockedDomains : [],
+    dominiosPermitidos: Array.isArray(policyData.allowedDomains) ? policyData.allowedDomains : [],
+    modoEscolaAtivo: policyData.schoolModeEnabled === true,
+    escolaInicio: policyData.schoolStart || null,
+    escolaFim: policyData.schoolEnd || null,
+  };
+
   const res = await fetch(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
     },
-    body: JSON.stringify(policyData),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
     if (res.status === 401) {
       throw new Error("Sessão expirada. Faça login novamente.");
     }
-    const txt = await res.text().catch(() => "");
-    throw new Error(`PUT /api/policy failed: ${res.status} ${txt}`);
+    const errorMessage = await readErrorPayload(res);
+    throw new Error(`PUT /api/politica failed: ${res.status} ${errorMessage}`);
   }
 
   return await res.json();
@@ -187,7 +228,7 @@ export async function updatePolicy(deviceId, policyData, token, baseUrl) {
  * Verifica saúde do backend
  */
 export async function checkHealth(baseUrl = API_BASE_URL) {
-  const url = `${baseUrl.replace(/\/+$/, "")}/actuator/health`;
+  const url = `${baseUrl.replace(/\/+$/, "")}/v3/api-docs`;
   const res = await fetch(url, { method: "GET" });
   return { ok: res.ok, status: res.status };
 }

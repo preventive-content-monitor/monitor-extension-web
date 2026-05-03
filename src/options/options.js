@@ -327,7 +327,7 @@ async function handleTestBackend() {
   const backendUrl = $("#backendUrl").value.trim() || "http://localhost:8080";
   
   try {
-    const response = await fetch(`${backendUrl}/actuator/health`, {
+    const response = await fetch(`${backendUrl}/v3/api-docs`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     });
