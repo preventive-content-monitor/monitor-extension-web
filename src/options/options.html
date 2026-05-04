@@ -2,7 +2,11 @@
 <html lang="pt-br">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Guardian - Proteção Familiar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
@@ -10,11 +14,7 @@
     <header class="header">
       <div class="header-content">
         <div class="logo">
-          <span class="logo-icon">🛡️</span>
-          <div>
-            <h1>Guardian</h1>
-            <p class="tagline">Proteção digital para sua família</p>
-          </div>
+          <img class="logo-image" src="../../assets/logo.png" alt="Guardian" />
         </div>
         <div class="status-badge" id="statusBadge">
           <span class="status-dot"></span>
@@ -27,7 +27,7 @@
       <!-- ============ LOGIN/REGISTRO ============ -->
       <section class="card card-highlight login-card" id="authCard">
         <div class="card-header">
-          <span class="step-number">🔐</span>
+          <span class="step-number">1</span>
           <div>
             <h2>Acesso do Responsável</h2>
             <p>Entre com sua conta para vincular este dispositivo</p>
@@ -102,7 +102,7 @@
       <!-- ============ VINCULAR DISPOSITIVO ============ -->
       <section class="card card-highlight" id="connectionCard">
         <div class="card-header">
-          <span class="step-number">🔗</span>
+          <span class="step-number">2</span>
           <div>
             <h2>Vincular Dispositivo</h2>
             <p>Conecte este navegador ao perfil do seu filho</p>
@@ -114,17 +114,17 @@
           <div id="notConnected">
             <div class="connection-guide">
               <div class="guide-step">
-                <span class="guide-icon">🌐</span>
+                <span class="guide-icon">A</span>
                 <p>Acesse o painel Guardian</p>
               </div>
               <div class="guide-arrow">→</div>
               <div class="guide-step">
-                <span class="guide-icon">🔢</span>
+                <span class="guide-icon">B</span>
                 <p>Gere um código de vinculação</p>
               </div>
               <div class="guide-arrow">→</div>
               <div class="guide-step">
-                <span class="guide-icon">⬇️</span>
+                <span class="guide-icon">C</span>
                 <p>Digite o código aqui</p>
               </div>
             </div>
@@ -153,7 +153,7 @@
           <!-- Conectado -->
           <div id="connected" class="connected-state" style="display: none;">
             <div class="connected-info">
-              <div class="connected-avatar">👦</div>
+              <div class="connected-avatar">✓</div>
               <div class="connected-details">
                 <p class="connected-label">Protegendo</p>
                 <p class="connected-name" id="childName">-</p>
@@ -171,7 +171,7 @@
       <!-- ============ STATUS DA PROTEÇÃO ============ -->
       <section class="card" id="statusCard">
         <div class="card-header">
-          <span class="step-number">📊</span>
+          <span class="step-number">3</span>
           <div>
             <h2>Status da Proteção</h2>
             <p>Informações sobre a proteção ativa</p>
@@ -249,7 +249,7 @@
         <p class="modal-message" id="modalMessage">Tem certeza?</p>
         <div class="modal-actions">
           <button class="btn btn-secondary" id="modalCancel">Cancelar</button>
-          <button class="btn btn-primary btn-danger" id="modalConfirm">Confirmar</button>
+          <button class="btn btn-secondary btn-danger" id="modalConfirm">Confirmar</button>
         </div>
       </div>
     </div>

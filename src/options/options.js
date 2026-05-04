@@ -39,7 +39,7 @@ function updateAuthUI() {
   
   if (authState.isLoggedIn) {
     notLoggedIn.style.display = "none";
-    loggedIn.style.display = "flex";
+    loggedIn.style.display = "grid";
     $("#loggedEmail").textContent = authState.email || "-";
     document.body.classList.add("logged-in");
   } else {
