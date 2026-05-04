@@ -13,17 +13,20 @@ const POLICY_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
  */
 export async function syncPolicy() {
   const s = await getSettings();
-  
-  if (!await isEnrolled() || !s.deviceId) {
+
+  if (!(await isEnrolled()) || !s.deviceId) {
     return null;
   }
 
   try {
     // Tenta buscar do backend
-    const backendPolicy = await fetchPolicy(s.deviceId, s.backendUrl || API_BASE_URL);
-    
+    const backendPolicy = await fetchPolicy(
+      s.deviceId,
+      s.backendUrl || API_BASE_URL,
+    );
+
     console.log("[Guardian] Policy from backend:", backendPolicy);
-    
+
     // Parse blockedDomains (pode vir como string JSON do backend)
     let blockedDomains = [];
     if (typeof backendPolicy.blockedDomains === "string") {
@@ -35,7 +38,7 @@ export async function syncPolicy() {
     } else if (Array.isArray(backendPolicy.blockedDomains)) {
       blockedDomains = backendPolicy.blockedDomains;
     }
-    
+
     // Parse allowedDomains (pode vir como string JSON do backend)
     let allowedDomains = [];
     if (typeof backendPolicy.allowedDomains === "string") {
@@ -47,7 +50,7 @@ export async function syncPolicy() {
     } else if (Array.isArray(backendPolicy.allowedDomains)) {
       allowedDomains = backendPolicy.allowedDomains;
     }
-    
+
     // protectionEnabled pode não vir do backend - assume true por padrão
     const protectionEnabled = backendPolicy.protectionEnabled !== false;
 
@@ -58,18 +61,26 @@ export async function syncPolicy() {
 
     // Mantem o nome do dependente atualizado para exibir corretamente na options page
     if (dependentNickname) {
-      const { dependentNickname: currentNickname } = await chrome.storage.sync.get(["dependentNickname"]);
+      const { dependentNickname: currentNickname } =
+        await chrome.storage.sync.get(["dependentNickname"]);
       if (currentNickname !== dependentNickname) {
         await chrome.storage.sync.set({ dependentNickname });
       }
     }
-    
-    console.log("[Guardian] Parsed policy - blocked:", blockedDomains, "allowed:", allowedDomains, "enabled:", protectionEnabled);
-    
+
+    console.log(
+      "[Guardian] Parsed policy - blocked:",
+      blockedDomains,
+      "allowed:",
+      allowedDomains,
+      "enabled:",
+      protectionEnabled,
+    );
+
     // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend
     await syncBlocklistToDNR(blockedDomains, protectionEnabled, allowedDomains);
     console.log("[Guardian] DNR updated successfully");
-    
+
     // Converte para formato interno
     return {
       mode: backendPolicy.mode || POLICY_MODES.BLOCK,
@@ -84,7 +95,10 @@ export async function syncPolicy() {
       fromBackend: true,
     };
   } catch (e) {
-    console.warn("[Guardian] Failed to fetch policy from backend, using local:", e.message);
+    console.warn(
+      "[Guardian] Failed to fetch policy from backend, using local:",
+      e.message,
+    );
     // Fallback para política local
     return buildLocalPolicy(s);
   }
@@ -95,7 +109,7 @@ export async function syncPolicy() {
  */
 function buildLocalPolicy(settings) {
   let mode = POLICY_MODES.BLOCK;
-  
+
   switch (settings.actionOnHighRisk) {
     case "warn":
       mode = POLICY_MODES.WARN;
@@ -119,14 +133,16 @@ function buildLocalPolicy(settings) {
  * Obtém política atual (cache ou recalcula)
  */
 export async function getCurrentPolicy() {
-  const { [POLICY_CACHE_KEY]: cached } = await chrome.storage.local.get([POLICY_CACHE_KEY]);
-  
+  const { [POLICY_CACHE_KEY]: cached } = await chrome.storage.local.get([
+    POLICY_CACHE_KEY,
+  ]);
+
   if (cached && Date.now() - cached.timestamp < POLICY_CACHE_TTL) {
     return cached.policy;
   }
 
   const policy = await syncPolicy();
-  
+
   if (policy) {
     await chrome.storage.local.set({
       [POLICY_CACHE_KEY]: {
@@ -150,7 +166,7 @@ export async function shouldBlockUrl(url) {
     const hostname = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
 
     // Primeiro verifica allowlist
-    const isAllowed = policy.allowedDomains.some(d => {
+    const isAllowed = policy.allowedDomains.some((d) => {
       const domain = d.replace(/^www\./, "").toLowerCase();
       return hostname === domain || hostname.endsWith("." + domain);
     });
@@ -160,7 +176,7 @@ export async function shouldBlockUrl(url) {
     }
 
     // Depois verifica blocklist
-    const isBlocked = policy.blockedDomains.some(d => {
+    const isBlocked = policy.blockedDomains.some((d) => {
       const domain = d.replace(/^www\./, "").toLowerCase();
       return hostname === domain || hostname.endsWith("." + domain);
     });

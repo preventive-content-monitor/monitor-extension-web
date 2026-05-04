@@ -6,7 +6,7 @@ export async function enqueueEvent(event) {
   queue.push(event);
   await chrome.storage.local.set({ [KEY]: queue });
 }
-    
+
 export async function drainQueue(max = 100) {
   const { eventQueue } = await chrome.storage.local.get([KEY]);
   const queue = Array.isArray(eventQueue) ? eventQueue : [];

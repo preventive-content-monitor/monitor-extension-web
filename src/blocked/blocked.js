@@ -6,11 +6,11 @@
 
 // Pega a URL bloqueada dos parâmetros
 const params = new URLSearchParams(window.location.search);
-const blockedUrl = params.get('url') || 'URL desconhecida';
-const mode = params.get('mode') || 'blacklist'; // blacklist ou whitelist
+const blockedUrl = params.get("url") || "URL desconhecida";
+const mode = params.get("mode") || "blacklist"; // blacklist ou whitelist
 
 // Extrai o domínio
-let blockedDomain = 'desconhecido';
+let blockedDomain = "desconhecido";
 try {
   blockedDomain = new URL(blockedUrl).hostname;
 } catch (e) {
@@ -19,11 +19,11 @@ try {
 }
 
 // Exibe a URL formatada
-document.getElementById('blockedUrl').textContent = blockedDomain;
+document.getElementById("blockedUrl").textContent = blockedDomain;
 
 // Atualiza mensagem para modo whitelist
-if (mode === 'whitelist') {
-  const reasonBox = document.querySelector('.info-box');
+if (mode === "whitelist") {
+  const reasonBox = document.querySelector(".info-box");
   if (reasonBox) {
     reasonBox.innerHTML = `
       <h3>🔒 Por que este site foi bloqueado?</h3>
@@ -38,15 +38,15 @@ if (mode === 'whitelist') {
 
 // Timestamp
 const now = new Date();
-document.getElementById('timestamp').textContent = 
-  `Bloqueado em ${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR')}`;
+document.getElementById("timestamp").textContent =
+  `Bloqueado em ${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR")}`;
 
 // Função voltar
-window.goBack = function() {
+window.goBack = function () {
   if (window.history.length > 1) {
     window.history.back();
   } else {
-    window.location.href = 'https://google.com';
+    window.location.href = "https://google.com";
   }
 };
 
@@ -55,14 +55,14 @@ async function registerBlockEvent() {
   try {
     // Envia mensagem pro service worker registrar o evento
     await chrome.runtime.sendMessage({
-      type: 'BLOCK_ATTEMPT',
+      type: "BLOCK_ATTEMPT",
       url: blockedUrl,
       domain: blockedDomain,
-      reason: mode === 'whitelist' ? 'not_in_allowlist' : 'domain_blocked'
+      reason: mode === "whitelist" ? "not_in_allowlist" : "domain_blocked",
     });
-    console.log('[Guardian] Evento de bloqueio registrado');
+    console.log("[Guardian] Evento de bloqueio registrado");
   } catch (error) {
-    console.error('[Guardian] Erro ao registrar bloqueio:', error);
+    console.error("[Guardian] Erro ao registrar bloqueio:", error);
   }
 }
 

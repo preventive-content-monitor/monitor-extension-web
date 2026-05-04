@@ -78,10 +78,10 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
     if (eventType === "PERMISSION_REQUEST") return "PERMISSION_REQUEST";
     return "NAVIGATION";
   };
-  
+
   const payload = {
     dispositivoId: deviceId,
-    eventos: events.map(e => ({
+    eventos: events.map((e) => ({
       tipo: toBackendEventType(e.type),
       url: e.url,
       titulo: e.title || "",
@@ -98,7 +98,9 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
 
   if (!res.ok) {
     const errorMessage = await readErrorPayload(res);
-    throw new Error(`POST /api/eventos/lote failed: ${res.status} ${errorMessage}`);
+    throw new Error(
+      `POST /api/eventos/lote failed: ${res.status} ${errorMessage}`,
+    );
   }
 
   return await res.json();
@@ -133,7 +135,10 @@ export async function enrollDevice(code, deviceName, baseUrl) {
  * Endpoint público (sem autenticação)
  */
 export async function fetchPolicy(deviceId, baseUrl) {
-  const url = buildUrl(baseUrl, `/api/politica/atual?dispositivoId=${encodeURIComponent(deviceId)}`);
+  const url = buildUrl(
+    baseUrl,
+    `/api/politica/atual?dispositivoId=${encodeURIComponent(deviceId)}`,
+  );
 
   console.log("[Guardian] Fetching policy:", url);
 
@@ -146,7 +151,9 @@ export async function fetchPolicy(deviceId, baseUrl) {
 
   if (!res.ok) {
     const errorMessage = await readErrorPayload(res);
-    throw new Error(`GET /api/politica/atual failed: ${res.status} ${errorMessage}`);
+    throw new Error(
+      `GET /api/politica/atual failed: ${res.status} ${errorMessage}`,
+    );
   }
 
   const policy = await res.json();
@@ -186,7 +193,10 @@ export async function fetchPolicy(deviceId, baseUrl) {
  * Requer JWT token
  */
 export async function updatePolicy(deviceId, policyData, token, baseUrl) {
-  const url = buildUrl(baseUrl, `/api/politica?dispositivoId=${encodeURIComponent(deviceId)}`);
+  const url = buildUrl(
+    baseUrl,
+    `/api/politica?dispositivoId=${encodeURIComponent(deviceId)}`,
+  );
 
   console.log("[Guardian] Updating policy:", url, policyData);
 
@@ -197,8 +207,12 @@ export async function updatePolicy(deviceId, policyData, token, baseUrl) {
   const payload = {
     modo: policyData.mode,
     limiteRisco: policyData.riskThreshold,
-    dominiosBloqueados: Array.isArray(policyData.blockedDomains) ? policyData.blockedDomains : [],
-    dominiosPermitidos: Array.isArray(policyData.allowedDomains) ? policyData.allowedDomains : [],
+    dominiosBloqueados: Array.isArray(policyData.blockedDomains)
+      ? policyData.blockedDomains
+      : [],
+    dominiosPermitidos: Array.isArray(policyData.allowedDomains)
+      ? policyData.allowedDomains
+      : [],
     modoEscolaAtivo: policyData.schoolModeEnabled === true,
     escolaInicio: policyData.schoolStart || null,
     escolaFim: policyData.schoolEnd || null,
@@ -208,7 +222,7 @@ export async function updatePolicy(deviceId, policyData, token, baseUrl) {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(payload),
   });

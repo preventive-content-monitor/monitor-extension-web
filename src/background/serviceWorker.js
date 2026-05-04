@@ -1,7 +1,19 @@
-import { ensureDefaults, isEnrolled, enrollWithCode, getEnrollmentInfo, generateDeviceName } from "./deviceIdentity.js";
+import {
+  ensureDefaults,
+  isEnrolled,
+  enrollWithCode,
+  getEnrollmentInfo,
+  generateDeviceName,
+} from "./deviceIdentity.js";
 import { getSettings } from "./policyStore.js";
 import { enqueueEvent, drainQueue } from "./eventQueue.js";
-import { postEventsBatch, fetchPolicy, updatePolicy, loginUser, registerUser } from "./apiClient.js";
+import {
+  postEventsBatch,
+  fetchPolicy,
+  updatePolicy,
+  loginUser,
+  registerUser,
+} from "./apiClient.js";
 import { EVENT_TYPES, API_BASE_URL } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
 import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
@@ -12,23 +24,25 @@ let policySyncTimer = null;
 chrome.runtime.onInstalled.addListener(async () => {
   try {
     await ensureDefaults();
-    
+
     // Se já está enrolled, garante que upload está habilitado
     const enrolled = await isEnrolled();
     if (enrolled) {
       const s = await getSettings();
       if (!s.uploadEnabled) {
-        console.log("[Guardian] Habilitando upload para dispositivo já enrolled");
-        await chrome.storage.sync.set({ 
+        console.log(
+          "[Guardian] Habilitando upload para dispositivo já enrolled",
+        );
+        await chrome.storage.sync.set({
           uploadEnabled: true,
-          backendUrl: s.backendUrl || API_BASE_URL
+          backendUrl: s.backendUrl || API_BASE_URL,
         });
       }
     }
-    
+
     // Tenta sincronizar política do backend primeiro
     const policy = await syncPolicy();
-    
+
     // Se não conseguiu (não enrolled ou erro), usa local
     if (!policy) {
       const s = await getSettings();
@@ -38,7 +52,7 @@ chrome.runtime.onInstalled.addListener(async () => {
         s.allowlistDomains || [],
       );
     }
-    
+
     await startUploadLoop();
     await startPolicySyncLoop();
   } catch (e) {
@@ -54,14 +68,16 @@ chrome.runtime.onStartup.addListener(async () => {
     if (enrolled) {
       const s = await getSettings();
       if (!s.uploadEnabled) {
-        console.log("[Guardian] Habilitando upload para dispositivo já enrolled");
-        await chrome.storage.sync.set({ 
+        console.log(
+          "[Guardian] Habilitando upload para dispositivo já enrolled",
+        );
+        await chrome.storage.sync.set({
           uploadEnabled: true,
-          backendUrl: s.backendUrl || API_BASE_URL
+          backendUrl: s.backendUrl || API_BASE_URL,
         });
       }
     }
-    
+
     await syncPolicy();
     await startUploadLoop();
     await startPolicySyncLoop();
@@ -72,13 +88,18 @@ chrome.runtime.onStartup.addListener(async () => {
 
 async function startPolicySyncLoop() {
   if (policySyncTimer) clearInterval(policySyncTimer);
-  
+
   // Sincroniza política a cada 30 segundos para pegar mudanças do dashboard
   policySyncTimer = setInterval(async () => {
     try {
       const policy = await syncPolicy();
       if (policy) {
-        console.log("[Guardian] Policy synced - allowed:", policy.allowedDomains?.length || 0, "blocked:", policy.blockedDomains?.length || 0);
+        console.log(
+          "[Guardian] Policy synced - allowed:",
+          policy.allowedDomains?.length || 0,
+          "blocked:",
+          policy.blockedDomains?.length || 0,
+        );
       }
     } catch (e) {
       console.warn("[Guardian] Policy sync failed:", e.message);
@@ -92,7 +113,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   try {
     // Sincroniza política do backend (prioridade)
     const policy = await syncPolicy();
-    
+
     // Se não conseguiu, usa local
     if (!policy) {
       const s = await getSettings();
@@ -114,21 +135,26 @@ async function startUploadLoop() {
   const s = await getSettings();
 
   if (uploadTimer) clearInterval(uploadTimer);
-  
+
   // Verifica se está enrolled e pode enviar
   const enrolled = await isEnrolled();
   const backendUrl = s.backendUrl || API_BASE_URL;
   const canUpload = enrolled && s.deviceId;
-  
+
   if (!canUpload) {
-    console.log("[Guardian] Upload desabilitado:", { 
+    console.log("[Guardian] Upload desabilitado:", {
       enrolled,
-      deviceId: !!s.deviceId
+      deviceId: !!s.deviceId,
     });
     return;
   }
 
-  console.log("[Guardian] Upload habilitado, iniciando loop para deviceId:", s.deviceId, "backend:", backendUrl);
+  console.log(
+    "[Guardian] Upload habilitado, iniciando loop para deviceId:",
+    s.deviceId,
+    "backend:",
+    backendUrl,
+  );
 
   // Faz upload imediato se tiver eventos pendentes
   try {
@@ -147,16 +173,25 @@ async function startUploadLoop() {
         // Re-busca settings a cada iteração para pegar deviceId atualizado
         const currentSettings = await getSettings();
         const currentBackendUrl = currentSettings.backendUrl || API_BASE_URL;
-        
+
         if (!currentSettings.deviceId) {
           console.log("[Guardian] Upload ignorado - sem deviceId");
           return;
         }
-        
+
         const batch = await drainQueue(200);
         if (batch.length === 0) return;
-        console.log("[Guardian] Enviando", batch.length, "eventos para", currentBackendUrl);
-        await postEventsBatch(currentSettings.deviceId, batch, currentBackendUrl);
+        console.log(
+          "[Guardian] Enviando",
+          batch.length,
+          "eventos para",
+          currentBackendUrl,
+        );
+        await postEventsBatch(
+          currentSettings.deviceId,
+          batch,
+          currentBackendUrl,
+        );
       } catch (e) {
         console.warn("[Guardian] Upload failed:", e?.message || e);
       }
@@ -214,14 +249,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const deviceName = msg.deviceName || generateDeviceName();
           const baseUrl = s.backendUrl || API_BASE_URL;
           const result = await enrollWithCode(msg.code, deviceName, baseUrl);
-          
+
           // Reinicia loops de upload e sync após enrollment
           await startUploadLoop();
           await startPolicySyncLoop();
-          
+
           // Sincroniza política imediatamente
           await syncPolicy();
-          
+
           sendResponse({ ok: true, ...result });
         } catch (e) {
           sendResponse({ ok: false, error: e?.message || String(e) });
@@ -241,24 +276,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const enrolled = await isEnrolled();
         if (enrolled) {
           const info = await getEnrollmentInfo();
-          const { cachedPolicy } = await chrome.storage.local.get(["cachedPolicy"]);
+          const { cachedPolicy } = await chrome.storage.local.get([
+            "cachedPolicy",
+          ]);
           const policyDependentName =
             typeof cachedPolicy?.policy?.nomeDependente === "string"
               ? cachedPolicy.policy.nomeDependente.trim()
               : "";
           const dependentNickname =
-            info.dependentNickname || s.dependentNickname || policyDependentName;
+            info.dependentNickname ||
+            s.dependentNickname ||
+            policyDependentName;
 
-          if (!info.dependentNickname && policyDependentName && s.dependentNickname !== policyDependentName) {
-            await chrome.storage.sync.set({ dependentNickname: policyDependentName });
+          if (
+            !info.dependentNickname &&
+            policyDependentName &&
+            s.dependentNickname !== policyDependentName
+          ) {
+            await chrome.storage.sync.set({
+              dependentNickname: policyDependentName,
+            });
           }
 
-          sendResponse({ 
-            ok: true, 
+          sendResponse({
+            ok: true,
             enrolled: true,
             deviceId: s.deviceId,
             dependentNickname,
-            enrolledAt: s.enrolledAt
+            enrolledAt: s.enrolledAt,
           });
         } else {
           sendResponse({ ok: true, enrolled: false });
@@ -269,20 +314,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Obter status da política atual
       if (msg?.type === "GET_POLICY_STATUS") {
         try {
-          const { cachedPolicy } = await chrome.storage.local.get(["cachedPolicy"]);
+          const { cachedPolicy } = await chrome.storage.local.get([
+            "cachedPolicy",
+          ]);
           if (cachedPolicy?.policy) {
-            sendResponse({ 
-              ok: true, 
+            sendResponse({
+              ok: true,
               policy: cachedPolicy.policy,
-              lastSync: cachedPolicy.timestamp
+              lastSync: cachedPolicy.timestamp,
             });
           } else {
             // Tenta sincronizar
             const policy = await syncPolicy();
-            sendResponse({ 
-              ok: true, 
+            sendResponse({
+              ok: true,
               policy: policy || null,
-              lastSync: Date.now()
+              lastSync: Date.now(),
             });
           }
         } catch (e) {
@@ -297,10 +344,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.log("[Guardian] Sincronização manual solicitada");
           const policy = await syncPolicy();
           if (policy) {
-            sendResponse({ 
-              ok: true, 
+            sendResponse({
+              ok: true,
               policy: policy,
-              message: "Política sincronizada com sucesso"
+              message: "Política sincronizada com sucesso",
             });
           } else {
             sendResponse({ ok: false, error: "Nenhuma política retornada" });
@@ -315,10 +362,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Desconectar dispositivo
       if (msg?.type === "DISCONNECT_DEVICE") {
         await chrome.storage.sync.remove([
-          "deviceId", 
-          "enrolledAt", 
-          "dependentId", 
-          "dependentNickname"
+          "deviceId",
+          "enrolledAt",
+          "dependentId",
+          "dependentNickname",
         ]);
         await chrome.storage.local.remove(["cachedPolicy"]);
         await syncBlocklistToDNR([], false, []); // Limpa DNR
@@ -331,14 +378,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
           const baseUrl = s.backendUrl || API_BASE_URL;
           const result = await loginUser(msg.email, msg.password, baseUrl);
-          
+
           // Salva o token no storage
-          await chrome.storage.local.set({ 
+          await chrome.storage.local.set({
             authToken: result.token,
             authEmail: msg.email,
-            authAt: Date.now()
+            authAt: Date.now(),
           });
-          
+
           sendResponse({ ok: true, token: result.token });
         } catch (e) {
           sendResponse({ ok: false, error: e?.message || String(e) });
@@ -367,12 +414,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Verificar se está logado
       if (msg?.type === "GET_AUTH_STATUS") {
-        const auth = await chrome.storage.local.get(["authToken", "authEmail", "authAt"]);
-        sendResponse({ 
-          ok: true, 
+        const auth = await chrome.storage.local.get([
+          "authToken",
+          "authEmail",
+          "authAt",
+        ]);
+        sendResponse({
+          ok: true,
           isLoggedIn: !!auth.authToken,
           email: auth.authEmail || null,
-          authAt: auth.authAt || null
+          authAt: auth.authAt || null,
         });
         return;
       }
@@ -382,7 +433,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
           await invalidatePolicyCache(); // Força nova busca
           const policy = await syncPolicy();
-          
+
           if (policy) {
             // Se veio do backend, atualiza DNR com blocklist do backend
             if (policy.fromBackend) {
@@ -420,23 +471,35 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: "Dispositivo não conectado" });
           return;
         }
-        
+
         // Busca token do storage
         const auth = await chrome.storage.local.get(["authToken"]);
         if (!auth.authToken) {
-          sendResponse({ ok: false, error: "Faça login para sincronizar configurações" });
+          sendResponse({
+            ok: false,
+            error: "Faça login para sincronizar configurações",
+          });
           return;
         }
-        
+
         try {
           const baseUrl = s.backendUrl || API_BASE_URL;
-          const result = await updatePolicy(s.deviceId, msg.policy, auth.authToken, baseUrl);
+          const result = await updatePolicy(
+            s.deviceId,
+            msg.policy,
+            auth.authToken,
+            baseUrl,
+          );
           await invalidatePolicyCache(); // Força re-sync
           sendResponse({ ok: true, result });
         } catch (e) {
           // Se token expirou, limpa auth
           if (e?.message?.includes("401") || e?.message?.includes("expirada")) {
-            await chrome.storage.local.remove(["authToken", "authEmail", "authAt"]);
+            await chrome.storage.local.remove([
+              "authToken",
+              "authEmail",
+              "authAt",
+            ]);
           }
           sendResponse({ ok: false, error: e?.message || String(e) });
         }
@@ -485,17 +548,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             domain: msg.domain,
           },
         });
-        
+
         // Tenta enviar imediatamente
         const s = await getSettings();
         const enrolled = await isEnrolled();
         const backendUrl = s.backendUrl || API_BASE_URL;
-        
+
         if (enrolled && s.deviceId) {
           try {
             const batch = await drainQueue(10);
             if (batch.length > 0) {
-              console.log("[Guardian] Enviando evento de bloqueio imediatamente para deviceId:", s.deviceId);
+              console.log(
+                "[Guardian] Enviando evento de bloqueio imediatamente para deviceId:",
+                s.deviceId,
+              );
               await postEventsBatch(s.deviceId, batch, backendUrl);
             }
           } catch (e) {

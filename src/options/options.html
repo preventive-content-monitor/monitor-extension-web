@@ -6,7 +6,10 @@
     <title>Guardian - Proteção Familiar</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Open+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="options.css" />
   </head>
   <body>
@@ -47,11 +50,21 @@
             <div class="auth-form" id="loginForm">
               <div class="form-group">
                 <label for="loginEmail">Email</label>
-                <input type="email" id="loginEmail" placeholder="seu@email.com" autocomplete="email" />
+                <input
+                  type="email"
+                  id="loginEmail"
+                  placeholder="seu@email.com"
+                  autocomplete="email"
+                />
               </div>
               <div class="form-group">
                 <label for="loginPassword">Senha</label>
-                <input type="password" id="loginPassword" placeholder="••••••" autocomplete="current-password" />
+                <input
+                  type="password"
+                  id="loginPassword"
+                  placeholder="••••••"
+                  autocomplete="current-password"
+                />
               </div>
               <p class="error-message" id="loginError"></p>
               <button class="btn btn-primary btn-large btn-full" id="loginBtn">
@@ -61,21 +74,39 @@
             </div>
 
             <!-- Form Registro -->
-            <div class="auth-form" id="registerForm" style="display: none;">
+            <div class="auth-form" id="registerForm" style="display: none">
               <div class="form-group">
                 <label for="registerEmail">Email</label>
-                <input type="email" id="registerEmail" placeholder="seu@email.com" autocomplete="email" />
+                <input
+                  type="email"
+                  id="registerEmail"
+                  placeholder="seu@email.com"
+                  autocomplete="email"
+                />
               </div>
               <div class="form-group">
                 <label for="registerPassword">Senha</label>
-                <input type="password" id="registerPassword" placeholder="Mínimo 6 caracteres" autocomplete="new-password" />
+                <input
+                  type="password"
+                  id="registerPassword"
+                  placeholder="Mínimo 6 caracteres"
+                  autocomplete="new-password"
+                />
               </div>
               <div class="form-group">
                 <label for="registerPasswordConfirm">Confirmar Senha</label>
-                <input type="password" id="registerPasswordConfirm" placeholder="Repita a senha" autocomplete="new-password" />
+                <input
+                  type="password"
+                  id="registerPasswordConfirm"
+                  placeholder="Repita a senha"
+                  autocomplete="new-password"
+                />
               </div>
               <p class="error-message" id="registerError"></p>
-              <button class="btn btn-primary btn-large btn-full" id="registerBtn">
+              <button
+                class="btn btn-primary btn-large btn-full"
+                id="registerBtn"
+              >
                 <span class="btn-icon">📝</span>
                 Criar Conta
               </button>
@@ -83,7 +114,7 @@
           </div>
 
           <!-- Logado -->
-          <div id="loggedIn" class="logged-in-state" style="display: none;">
+          <div id="loggedIn" class="logged-in-state" style="display: none">
             <div class="logged-info">
               <div class="logged-avatar">👤</div>
               <div class="logged-details">
@@ -132,14 +163,19 @@
             <div class="code-input-area">
               <label for="connectionCode">Código de 6 caracteres:</label>
               <div class="code-input-row">
-                <input 
-                  type="text" 
-                  id="connectionCode" 
-                  maxlength="6" 
+                <input
+                  type="text"
+                  id="connectionCode"
+                  maxlength="6"
                   placeholder="ABC123"
                   autocomplete="off"
                   spellcheck="false"
-                  style="text-transform: uppercase; letter-spacing: 2px; font-size: 1.25rem; text-align: center;"
+                  style="
+                    text-transform: uppercase;
+                    letter-spacing: 2px;
+                    font-size: 1.25rem;
+                    text-align: center;
+                  "
                 />
                 <button class="btn btn-primary btn-large" id="connectBtn">
                   <span class="btn-icon">🔗</span>
@@ -151,13 +187,15 @@
           </div>
 
           <!-- Conectado -->
-          <div id="connected" class="connected-state" style="display: none;">
+          <div id="connected" class="connected-state" style="display: none">
             <div class="connected-info">
               <div class="connected-avatar">✓</div>
               <div class="connected-details">
                 <p class="connected-label">Protegendo</p>
                 <p class="connected-name" id="childName">-</p>
-                <p class="connected-since">Desde: <span id="connectedSince">-</span></p>
+                <p class="connected-since">
+                  Desde: <span id="connectedSince">-</span>
+                </p>
               </div>
               <span class="connected-badge">✓ Ativo</span>
             </div>
@@ -194,15 +232,23 @@
                 <span class="status-value" id="lastSync">-</span>
               </div>
             </div>
-            
-            <button class="btn btn-secondary btn-full" id="syncNowBtn" style="margin-bottom: 1rem;">
+
+            <button
+              class="btn btn-secondary btn-full"
+              id="syncNowBtn"
+              style="margin-bottom: 1rem"
+            >
               <span class="btn-icon">🔄</span>
               Sincronizar Agora
             </button>
-            
+
             <div class="dashboard-link">
               <p>Para configurar políticas, sites bloqueados e horários:</p>
-              <a href="http://localhost:5500/dashboard/index.html" target="_blank" class="btn btn-secondary">
+              <a
+                href="http://localhost:5500/dashboard/index.html"
+                target="_blank"
+                class="btn btn-secondary"
+              >
                 <span class="btn-icon">🖥️</span>
                 Abrir Painel Guardian
               </a>
@@ -218,17 +264,31 @@
           <span class="collapse-icon">▼</span>
         </button>
 
-        <div class="advanced-content" id="advancedContent" style="display: none;">
+        <div
+          class="advanced-content"
+          id="advancedContent"
+          style="display: none"
+        >
           <section class="card card-muted">
             <div class="advanced-option">
               <label>URL do servidor:</label>
-              <input type="text" id="backendUrl" placeholder="http://localhost:8080" />
-              <p class="help-text">Deixe em branco para usar o servidor padrão</p>
+              <input
+                type="text"
+                id="backendUrl"
+                placeholder="http://localhost:8080"
+              />
+              <p class="help-text">
+                Deixe em branco para usar o servidor padrão
+              </p>
             </div>
 
             <div class="advanced-actions">
-              <button class="btn btn-text" id="testBackend">🔍 Testar conexão</button>
-              <button class="btn btn-primary" id="saveServerBtn">💾 Salvar</button>
+              <button class="btn btn-text" id="testBackend">
+                🔍 Testar conexão
+              </button>
+              <button class="btn btn-primary" id="saveServerBtn">
+                💾 Salvar
+              </button>
             </div>
           </section>
         </div>
@@ -249,7 +309,9 @@
         <p class="modal-message" id="modalMessage">Tem certeza?</p>
         <div class="modal-actions">
           <button class="btn btn-secondary" id="modalCancel">Cancelar</button>
-          <button class="btn btn-secondary btn-danger" id="modalConfirm">Confirmar</button>
+          <button class="btn btn-secondary btn-danger" id="modalConfirm">
+            Confirmar
+          </button>
         </div>
       </div>
     </div>

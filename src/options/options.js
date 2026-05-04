@@ -20,7 +20,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ================== AUTH ==================
 async function loadAuthStatus() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_AUTH_STATUS" });
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_AUTH_STATUS",
+    });
     if (response?.ok) {
       authState = {
         isLoggedIn: response.isLoggedIn,
@@ -36,7 +38,7 @@ async function loadAuthStatus() {
 function updateAuthUI() {
   const notLoggedIn = $("#notLoggedIn");
   const loggedIn = $("#loggedIn");
-  
+
   if (authState.isLoggedIn) {
     notLoggedIn.style.display = "none";
     loggedIn.style.display = "grid";
@@ -53,25 +55,25 @@ async function handleLogin() {
   const email = $("#loginEmail").value.trim();
   const password = $("#loginPassword").value;
   const errorEl = $("#loginError");
-  
+
   errorEl.textContent = "";
-  
+
   if (!email || !password) {
     errorEl.textContent = "Preencha email e senha";
     return;
   }
-  
+
   const btn = $("#loginBtn");
   btn.disabled = true;
   btn.innerHTML = '<span class="btn-icon">⏳</span> Entrando...';
-  
+
   try {
     const response = await chrome.runtime.sendMessage({
       type: "LOGIN",
       email,
       password,
     });
-    
+
     if (response?.ok) {
       authState = { isLoggedIn: true, email };
       updateAuthUI();
@@ -92,39 +94,39 @@ async function handleRegister() {
   const password = $("#registerPassword").value;
   const passwordConfirm = $("#registerPasswordConfirm").value;
   const errorEl = $("#registerError");
-  
+
   errorEl.textContent = "";
-  
+
   if (!email || !password) {
     errorEl.textContent = "Preencha todos os campos";
     return;
   }
-  
+
   if (password.length < 6) {
     errorEl.textContent = "A senha deve ter pelo menos 6 caracteres";
     return;
   }
-  
+
   if (password !== passwordConfirm) {
     errorEl.textContent = "As senhas não coincidem";
     return;
   }
-  
+
   const btn = $("#registerBtn");
   btn.disabled = true;
   btn.innerHTML = '<span class="btn-icon">⏳</span> Criando...';
-  
+
   try {
     const response = await chrome.runtime.sendMessage({
       type: "REGISTER",
       email,
       password,
     });
-    
+
     if (response?.ok) {
       showToast("Conta criada! Faça login.", "success");
       // Switch to login tab
-      $$(".auth-tab").forEach(t => t.classList.remove("active"));
+      $$(".auth-tab").forEach((t) => t.classList.remove("active"));
       $(".auth-tab[data-tab='login']").classList.add("active");
       $("#loginForm").style.display = "block";
       $("#registerForm").style.display = "none";
@@ -154,8 +156,10 @@ async function handleLogout() {
 // ================== CONEXÃO DO DISPOSITIVO ==================
 async function loadConnectionStatus() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_CONNECTION_STATUS" });
-    
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_CONNECTION_STATUS",
+    });
+
     if (response?.enrolled) {
       $("#notConnected").style.display = "none";
       $("#connected").style.display = "block";
@@ -164,7 +168,7 @@ async function loadConnectionStatus() {
           ? response.dependentNickname.trim()
           : "";
       $("#childName").textContent = dependentName || "Dependente";
-      $("#connectedSince").textContent = response.enrolledAt 
+      $("#connectedSince").textContent = response.enrolledAt
         ? new Date(response.enrolledAt).toLocaleDateString("pt-BR")
         : "-";
       updateStatusBadge(true);
@@ -182,24 +186,24 @@ async function loadConnectionStatus() {
 async function handleConnect() {
   const code = $("#connectionCode").value.trim().toLowerCase();
   const errorEl = $("#connectionError");
-  
+
   errorEl.textContent = "";
-  
+
   if (!code || code.length < 6) {
     errorEl.textContent = "Digite o código de 6 caracteres";
     return;
   }
-  
+
   const btn = $("#connectBtn");
   btn.disabled = true;
   btn.innerHTML = '<span class="btn-icon">⏳</span> Conectando...';
-  
+
   try {
     const response = await chrome.runtime.sendMessage({
       type: "ENROLL_DEVICE",
       code,
     });
-    
+
     if (response?.ok) {
       showToast("Dispositivo conectado!", "success");
       await loadConnectionStatus();
@@ -219,11 +223,11 @@ async function handleDisconnect() {
   const confirmed = await showModal(
     "Desconectar dispositivo?",
     "A proteção será desativada neste navegador.",
-    "⚠️"
+    "⚠️",
   );
-  
+
   if (!confirmed) return;
-  
+
   try {
     await chrome.runtime.sendMessage({ type: "DISCONNECT_DEVICE" });
     showToast("Dispositivo desconectado", "info");
@@ -237,14 +241,16 @@ async function handleDisconnect() {
 async function handleSyncNow() {
   const btn = $("#syncNowBtn");
   const originalText = btn.innerHTML;
-  
+
   btn.disabled = true;
   btn.innerHTML = '<span class="btn-icon">⏳</span> Sincronizando...';
-  
+
   try {
     // Solicita sincronização imediata ao service worker
-    const response = await chrome.runtime.sendMessage({ type: "SYNC_POLICY_NOW" });
-    
+    const response = await chrome.runtime.sendMessage({
+      type: "SYNC_POLICY_NOW",
+    });
+
     if (response?.ok) {
       showToast("Política sincronizada!", "success");
       // Atualiza o display
@@ -264,7 +270,7 @@ async function handleSyncNow() {
 function updateStatusBadge(isConnected) {
   const badge = $("#statusBadge");
   const text = $("#statusText");
-  
+
   if (isConnected) {
     badge.classList.add("status-active");
     badge.classList.remove("status-inactive");
@@ -279,25 +285,28 @@ function updateStatusBadge(isConnected) {
 // ================== STATUS DA POLÍTICA ==================
 async function loadPolicyStatus() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: "GET_POLICY_STATUS" });
-    
+    const response = await chrome.runtime.sendMessage({
+      type: "GET_POLICY_STATUS",
+    });
+
     if (response?.policy) {
       const policy = response.policy;
-      
+
       const modeLabels = {
         BLOCK: "🚫 Bloquear",
         WARN: "⚠️ Avisar",
-        EDUCATE: "📝 Educar"
+        EDUCATE: "📝 Educar",
       };
-      
-      $("#policyMode").textContent = modeLabels[policy.mode] || policy.mode || "-";
-      
-      const blockedCount = Array.isArray(policy.blockedDomains) 
-        ? policy.blockedDomains.length 
+
+      $("#policyMode").textContent =
+        modeLabels[policy.mode] || policy.mode || "-";
+
+      const blockedCount = Array.isArray(policy.blockedDomains)
+        ? policy.blockedDomains.length
         : 0;
       $("#blockedCount").textContent = blockedCount.toString();
-      
-      $("#lastSync").textContent = response.lastSync 
+
+      $("#lastSync").textContent = response.lastSync
         ? new Date(response.lastSync).toLocaleTimeString("pt-BR")
         : "Agora";
     } else {
@@ -318,24 +327,24 @@ async function loadServerSettings() {
 
 async function handleSaveServer() {
   const backendUrl = $("#backendUrl").value.trim();
-  
+
   await chrome.storage.sync.set({
     backendUrl: backendUrl || "http://localhost:8080",
     uploadEnabled: true,
   });
-  
+
   showToast("Configurações salvas!", "success");
 }
 
 async function handleTestBackend() {
   const backendUrl = $("#backendUrl").value.trim() || "http://localhost:8080";
-  
+
   try {
     const response = await fetch(`${backendUrl}/v3/api-docs`, {
       method: "GET",
       signal: AbortSignal.timeout(5000),
     });
-    
+
     if (response.ok) {
       showToast("Conexão OK! ✓", "success");
     } else {
@@ -349,26 +358,27 @@ async function handleTestBackend() {
 // ================== EVENT LISTENERS ==================
 function setupEventListeners() {
   // Auth tabs
-  $$(".auth-tab").forEach(tab => {
+  $$(".auth-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       const tabName = tab.dataset.tab;
-      
-      $$(".auth-tab").forEach(t => t.classList.remove("active"));
+
+      $$(".auth-tab").forEach((t) => t.classList.remove("active"));
       tab.classList.add("active");
-      
+
       $("#loginForm").style.display = tabName === "login" ? "block" : "none";
-      $("#registerForm").style.display = tabName === "register" ? "block" : "none";
-      
+      $("#registerForm").style.display =
+        tabName === "register" ? "block" : "none";
+
       $("#loginError").textContent = "";
       $("#registerError").textContent = "";
     });
   });
-  
+
   // Login/Register
   $("#loginBtn").addEventListener("click", handleLogin);
   $("#registerBtn").addEventListener("click", handleRegister);
   $("#logoutBtn").addEventListener("click", handleLogout);
-  
+
   // Enter key for login
   $("#loginPassword").addEventListener("keypress", (e) => {
     if (e.key === "Enter") handleLogin();
@@ -376,24 +386,24 @@ function setupEventListeners() {
   $("#registerPasswordConfirm").addEventListener("keypress", (e) => {
     if (e.key === "Enter") handleRegister();
   });
-  
+
   // Connection
   $("#connectBtn").addEventListener("click", handleConnect);
   $("#disconnectBtn").addEventListener("click", handleDisconnect);
-  
+
   // Sync Now button
   $("#syncNowBtn")?.addEventListener("click", handleSyncNow);
-  
+
   // Enter key for connection
   $("#connectionCode").addEventListener("keypress", (e) => {
     if (e.key === "Enter") handleConnect();
   });
-  
+
   // Advanced toggle
   $("#toggleAdvanced").addEventListener("click", () => {
     const content = $("#advancedContent");
     const icon = $("#toggleAdvanced .collapse-icon");
-    
+
     if (content.style.display === "none") {
       content.style.display = "block";
       icon.textContent = "▲";
@@ -403,11 +413,11 @@ function setupEventListeners() {
       icon.textContent = "▼";
     }
   });
-  
+
   // Server settings
   $("#saveServerBtn").addEventListener("click", handleSaveServer);
   $("#testBackend").addEventListener("click", handleTestBackend);
-  
+
   // Modal
   $("#modalCancel").addEventListener("click", () => {
     $("#modalOverlay").classList.remove("show");
@@ -424,19 +434,19 @@ function showToast(message, type = "info") {
   const toast = $("#toast");
   const toastMessage = $("#toastMessage");
   const toastIcon = toast.querySelector(".toast-icon");
-  
+
   const icons = {
     success: "✓",
     error: "✕",
     info: "ℹ",
-    warning: "⚠"
+    warning: "⚠",
   };
-  
+
   toastIcon.textContent = icons[type] || icons.info;
   toastMessage.textContent = message;
-  
+
   toast.className = `toast toast-${type} show`;
-  
+
   setTimeout(() => {
     toast.classList.remove("show");
   }, 3000);
@@ -448,7 +458,7 @@ let modalResolve = null;
 function showModal(title, message, icon = "⚠️") {
   return new Promise((resolve) => {
     modalResolve = resolve;
-    
+
     $("#modalIcon").textContent = icon;
     $("#modalTitle").textContent = title;
     $("#modalMessage").textContent = message;

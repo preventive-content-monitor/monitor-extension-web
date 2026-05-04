@@ -23,10 +23,10 @@ export async function ensureDeviceId() {
 export async function enrollWithCode(code, deviceName, baseUrl) {
   const result = await apiEnroll(code, deviceName, baseUrl);
   const enrolledAt = result.vinculadoEm || new Date().toISOString();
-  
+
   // Salva o deviceId retornado pelo backend
   await chrome.storage.local.set({ deviceId: result.id });
-  
+
   // Salva dados de enrollment no sync storage
   await chrome.storage.sync.set({
     deviceId: result.id,
