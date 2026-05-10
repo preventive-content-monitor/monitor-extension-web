@@ -1,5 +1,11 @@
-// Backend API
-export const API_BASE_URL = "http://localhost:8080";
+// GERADO AUTOMATICAMENTE pelo Terraform — não edite manualmente.
+// Edite monitor-extension-web/src/shared/constants.js.tpl e rode `terraform apply`.
+
+// Backend API (Spring Boot EC2 - autenticação, política, dispositivos)
+export const API_BASE_URL = "${api_base_url}";
+
+// Events API (API Gateway → SQS → Lambda - envio de eventos)
+export const EVENTS_API_URL = "${events_api_url}";
 
 // Tipos de evento compatíveis com o backend Guardian
 export const EVENT_TYPES = {

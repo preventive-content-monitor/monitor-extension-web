@@ -73,26 +73,48 @@ export async function syncBlocklistToDNR(
       cleanedAllowed,
     );
   } else if (cleanedBlocked.length > 0) {
-    // MODO BLACKLIST: Bloqueia apenas os domínios específicos
+    // MODO BLACKLIST: Bloqueia apenas os domínios/URLs específicos
     console.log(
       "[Guardian DNR] Modo BLACKLIST ativo - bloqueados:",
       cleanedBlocked,
     );
 
-    newRules = cleanedBlocked.slice(0, 5000).map((d, idx) => ({
-      id: RULESET_ID_BASE + idx,
-      priority: 1,
-      action: {
-        type: "redirect",
-        redirect: {
-          url: `${BLOCKED_PAGE_BASE}?url=https://${d}`,
+    newRules = cleanedBlocked.slice(0, 5000).map((d, idx) => {
+      // Entradas com "/" são padrões de URL específicos (ex: youtube.com/watch?v=abc)
+      if (d.includes("/")) {
+        // Escapa caracteres especiais de regex, exceto já escapados
+        const escaped = d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return {
+          id: RULESET_ID_BASE + idx,
+          priority: 1,
+          action: {
+            type: "redirect",
+            redirect: {
+              url: `${BLOCKED_PAGE_BASE}?url=${encodeURIComponent("https://" + d)}`,
+            },
+          },
+          condition: {
+            regexFilter: escaped,
+            resourceTypes: ["main_frame"],
+          },
+        };
+      }
+      // Entradas sem "/" são domínios puros — bloqueia o domínio inteiro
+      return {
+        id: RULESET_ID_BASE + idx,
+        priority: 1,
+        action: {
+          type: "redirect",
+          redirect: {
+            url: `${BLOCKED_PAGE_BASE}?url=https://${d}`,
+          },
         },
-      },
-      condition: {
-        requestDomains: [d],
-        resourceTypes: ["main_frame"],
-      },
-    }));
+        condition: {
+          requestDomains: [d],
+          resourceTypes: ["main_frame"],
+        },
+      };
+    });
   }
 
   if (newRules.length > 0) {

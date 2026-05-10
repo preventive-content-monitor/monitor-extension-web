@@ -2,6 +2,7 @@
  * Guardian Extension - Options Page (Simplificado)
  * Apenas: Login, Vinculação de dispositivo, Status
  */
+import { API_BASE_URL } from "../shared/constants.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -11,6 +12,12 @@ let authState = { isLoggedIn: false, email: null };
 
 // ================== INICIALIZAÇÃO ==================
 document.addEventListener("DOMContentLoaded", async () => {
+  // Injeta o IP dinâmico gerado pelo Terraform no link do dashboard e no placeholder
+  const dashboardLink = document.getElementById("dashboardLink");
+  if (dashboardLink) dashboardLink.href = API_BASE_URL;
+  const backendUrlInput = document.getElementById("backendUrl");
+  if (backendUrlInput) backendUrlInput.placeholder = API_BASE_URL;
+
   await loadAuthStatus();
   await loadConnectionStatus();
   await loadPolicyStatus();
@@ -329,7 +336,7 @@ async function handleSaveServer() {
   const backendUrl = $("#backendUrl").value.trim();
 
   await chrome.storage.sync.set({
-    backendUrl: backendUrl || "http://localhost:8080",
+    backendUrl: backendUrl || API_BASE_URL,
     uploadEnabled: true,
   });
 
@@ -337,7 +344,7 @@ async function handleSaveServer() {
 }
 
 async function handleTestBackend() {
-  const backendUrl = $("#backendUrl").value.trim() || "http://localhost:8080";
+  const backendUrl = $("#backendUrl").value.trim() || API_BASE_URL;
 
   try {
     const response = await fetch(`${backendUrl}/v3/api-docs`, {

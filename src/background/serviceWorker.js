@@ -14,7 +14,7 @@ import {
   loginUser,
   registerUser,
 } from "./apiClient.js";
-import { EVENT_TYPES, API_BASE_URL } from "../shared/constants.js";
+import { EVENT_TYPES, API_BASE_URL, EVENTS_API_URL } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
 import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
 
@@ -89,7 +89,7 @@ chrome.runtime.onStartup.addListener(async () => {
 async function startPolicySyncLoop() {
   if (policySyncTimer) clearInterval(policySyncTimer);
 
-  // Sincroniza política a cada 30 segundos para pegar mudanças do dashboard
+  // Sincroniza política a cada 15 segundos para pegar mudanças do dashboard
   policySyncTimer = setInterval(async () => {
     try {
       const policy = await syncPolicy();
@@ -104,7 +104,7 @@ async function startPolicySyncLoop() {
     } catch (e) {
       console.warn("[Guardian] Policy sync failed:", e.message);
     }
-  }, 30 * 1000); // 30 segundos
+  }, 15 * 1000); // 15 segundos
 }
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
@@ -138,7 +138,6 @@ async function startUploadLoop() {
 
   // Verifica se está enrolled e pode enviar
   const enrolled = await isEnrolled();
-  const backendUrl = s.backendUrl || API_BASE_URL;
   const canUpload = enrolled && s.deviceId;
 
   if (!canUpload) {
@@ -152,8 +151,8 @@ async function startUploadLoop() {
   console.log(
     "[Guardian] Upload habilitado, iniciando loop para deviceId:",
     s.deviceId,
-    "backend:",
-    backendUrl,
+    "events api:",
+    EVENTS_API_URL,
   );
 
   // Faz upload imediato se tiver eventos pendentes
@@ -161,7 +160,7 @@ async function startUploadLoop() {
     const batch = await drainQueue(200);
     if (batch.length > 0) {
       console.log("[Guardian] Enviando", batch.length, "eventos pendentes");
-      await postEventsBatch(s.deviceId, batch, backendUrl);
+      await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
     }
   } catch (e) {
     console.warn("[Guardian] Upload inicial falhou:", e?.message || e);
@@ -172,7 +171,6 @@ async function startUploadLoop() {
       try {
         // Re-busca settings a cada iteração para pegar deviceId atualizado
         const currentSettings = await getSettings();
-        const currentBackendUrl = currentSettings.backendUrl || API_BASE_URL;
 
         if (!currentSettings.deviceId) {
           console.log("[Guardian] Upload ignorado - sem deviceId");
@@ -185,18 +183,18 @@ async function startUploadLoop() {
           "[Guardian] Enviando",
           batch.length,
           "eventos para",
-          currentBackendUrl,
+          EVENTS_API_URL,
         );
         await postEventsBatch(
           currentSettings.deviceId,
           batch,
-          currentBackendUrl,
+          EVENTS_API_URL,
         );
       } catch (e) {
         console.warn("[Guardian] Upload failed:", e?.message || e);
       }
     },
-    (s.uploadIntervalSec || 30) * 1000,
+    (s.uploadIntervalSec || 10) * 1000,
   );
 }
 
@@ -208,6 +206,9 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
     const s = await getSettings();
     const url = details.url || "";
     const u = new URL(url);
+
+    // Verifica blocklist local ANTES de enfileirar — bloqueio imediato em main_frame
+    await _verificarEBloquearUrl(url, u.hostname, details.tabId);
 
     await enqueueEvent({
       type: EVENT_TYPES.NAVIGATION,
@@ -221,10 +222,88 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
         transitionType: details.transitionType || null,
       },
     });
+
+    // Envia imediatamente sem esperar o timer
+    _uploadImediato(s);
   } catch (e) {
     console.warn("webNavigation log failed:", e?.message || e);
   }
 });
+
+// Detecta navegação dentro de SPAs (YouTube, etc.) que não recarregam a página
+chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
+  if (details.frameId !== 0) return;
+  try {
+    const url = details.url || "";
+    const u = new URL(url);
+    await _verificarEBloquearUrl(url, u.hostname, details.tabId);
+
+    const s = await getSettings();
+    await enqueueEvent({
+      type: EVENT_TYPES.NAVIGATION,
+      ts: Date.now(),
+      occurredAt: new Date().toISOString(),
+      url,
+      title: "",
+      metadata: { domain: u.hostname, tabId: details.tabId, spa: true },
+    });
+    _uploadImediato(s);
+  } catch (e) {
+    console.warn("historyStateUpdated log failed:", e?.message || e);
+  }
+});
+
+/**
+ * Verifica se a URL está na blocklist local e bloqueia imediatamente o tab.
+ * Funciona para SPAs e para páginas que o DNR ainda não interceptou.
+ */
+async function _verificarEBloquearUrl(url, hostname, tabId) {
+  try {
+    const { cachedPolicy } = await chrome.storage.local.get(["cachedPolicy"]);
+    const policy = cachedPolicy?.policy;
+    if (!policy?.blockedDomains?.length) return;
+
+    const blocked = policy.blockedDomains;
+    const urlLower = url.toLowerCase();
+
+    const match = blocked.find((entry) => {
+      if (entry.includes("/")) {
+        // Padrão de URL específica (ex: youtube.com/watch?v=abc)
+        return urlLower.includes(entry.toLowerCase());
+      } else {
+        // Domínio puro
+        const h = hostname.replace(/^www\./i, "").toLowerCase();
+        return h === entry || h.endsWith("." + entry);
+      }
+    });
+
+    if (match) {
+      const blockedPage = chrome.runtime.getURL(
+        `src/blocked/blocked.html?url=${encodeURIComponent(url)}`,
+      );
+      console.log("[Guardian] Bloqueio SPA:", url, "→ entrada:", match);
+      await chrome.tabs.update(tabId, { url: blockedPage });
+    }
+  } catch (e) {
+    // Não interrompe o fluxo normal em caso de erro
+  }
+}
+
+/**
+ * Envia eventos imediatamente, sem esperar o próximo tick do timer.
+ */
+async function _uploadImediato(s) {
+  const enrolled = await isEnrolled();
+  if (!enrolled || !s?.deviceId) return;
+  try {
+    const batch = await drainQueue(50);
+    if (batch.length > 0) {
+      await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
+    }
+  } catch (e) {
+    // silencia — o timer de 10s tentará novamente
+  }
+}
 
 // Recebe do content script: título + buscas detectadas + enrollment
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -552,7 +631,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // Tenta enviar imediatamente
         const s = await getSettings();
         const enrolled = await isEnrolled();
-        const backendUrl = s.backendUrl || API_BASE_URL;
 
         if (enrolled && s.deviceId) {
           try {
@@ -562,7 +640,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 "[Guardian] Enviando evento de bloqueio imediatamente para deviceId:",
                 s.deviceId,
               );
-              await postEventsBatch(s.deviceId, batch, backendUrl);
+              await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
             }
           } catch (e) {
             console.warn("[Guardian] Upload imediato falhou:", e?.message || e);

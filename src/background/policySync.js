@@ -5,7 +5,7 @@ import { API_BASE_URL, POLICY_MODES } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
 
 const POLICY_CACHE_KEY = "cachedPolicy";
-const POLICY_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const POLICY_CACHE_TTL = 15 * 1000; // 15 segundos
 
 /**
  * Busca política do backend
