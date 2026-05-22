@@ -71,7 +71,7 @@ export async function registerUser(email, password, baseUrl) {
  * POST /api/eventos/lote
  */
 export async function postEventsBatch(deviceId, events, baseUrl) {
-  const url = buildUrl(baseUrl, "/events/batch");
+  const url = buildUrl(baseUrl, "/api/eventos/lote");
 
   const toBackendEventType = (eventType) => {
     if (eventType === "BLOCK_ATTEMPT") return "BLOCK_ATTEMPT";

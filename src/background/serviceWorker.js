@@ -17,6 +17,7 @@ import {
 import { EVENT_TYPES, API_BASE_URL, EVENTS_API_URL } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
 import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
+import { refreshS3Blocklist } from "./blocklistSync.js";
 
 let uploadTimer = null;
 let policySyncTimer = null;
@@ -53,6 +54,11 @@ chrome.runtime.onInstalled.addListener(async () => {
       );
     }
 
+    // Atualiza listas S3 (whiteList + blackList) com suporte a ETag
+    await refreshS3Blocklist().catch((e) =>
+      console.warn("[Guardian] S3 refresh falhou no install:", e.message),
+    );
+
     await startUploadLoop();
     await startPolicySyncLoop();
   } catch (e) {
@@ -79,6 +85,12 @@ chrome.runtime.onStartup.addListener(async () => {
     }
 
     await syncPolicy();
+
+    // Atualiza listas S3 (whiteList + blackList) com suporte a ETag
+    await refreshS3Blocklist().catch((e) =>
+      console.warn("[Guardian] S3 refresh falhou no startup:", e.message),
+    );
+
     await startUploadLoop();
     await startPolicySyncLoop();
   } catch (e) {

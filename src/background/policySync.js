@@ -3,6 +3,7 @@ import { isEnrolled } from "./deviceIdentity.js";
 import { fetchPolicy } from "./apiClient.js";
 import { API_BASE_URL, POLICY_MODES } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
+import { getS3Blacklist } from "./blocklistSync.js";
 
 const POLICY_CACHE_KEY = "cachedPolicy";
 const POLICY_CACHE_TTL = 15 * 1000; // 15 segundos
@@ -77,8 +78,10 @@ export async function syncPolicy() {
       protectionEnabled,
     );
 
-    // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend
-    await syncBlocklistToDNR(blockedDomains, protectionEnabled, allowedDomains);
+    // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend + S3
+    const s3Blocked = await getS3Blacklist();
+    const mergedBlocked = [...new Set([...blockedDomains, ...s3Blocked])];
+    await syncBlocklistToDNR(mergedBlocked, protectionEnabled, allowedDomains);
     console.log("[Guardian] DNR updated successfully");
 
     // Converte para formato interno

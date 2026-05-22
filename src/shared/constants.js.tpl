@@ -7,6 +7,10 @@ export const API_BASE_URL = "${api_base_url}";
 // Events API (API Gateway → SQS → Lambda - envio de eventos)
 export const EVENTS_API_URL = "${events_api_url}";
 
+// S3 Blocklist (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
+export const S3_WHITELIST_URL = "${s3_whitelist_url}";
+export const S3_BLACKLIST_URL = "${s3_blacklist_url}";
+
 // Tipos de evento compatíveis com o backend Guardian
 export const EVENT_TYPES = {
   NAVIGATION: "NAVIGATION",
