@@ -17,7 +17,7 @@ import {
 import { EVENT_TYPES, API_BASE_URL, EVENTS_API_URL } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
 import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
-import { refreshS3Blocklist } from "./blocklistSync.js";
+import { refreshS3Blocklist, getS3Blacklist } from "./blocklistSync.js";
 
 let uploadTimer = null;
 let policySyncTimer = null;
@@ -98,6 +98,38 @@ chrome.runtime.onStartup.addListener(async () => {
   }
 });
 
+/**
+ * Após atualizar o DNR, redireciona abas já abertas que estejam em domínios bloqueados.
+ * Isso evita que o usuário precise dar F5 para ver o bloqueio.
+ */
+async function _redirectOpenBlockedTabs(blockedDomains) {
+  if (!blockedDomains || blockedDomains.length === 0) return;
+  try {
+    const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
+    const blockedPage = chrome.runtime.getURL("src/blocked/blocked.html");
+    for (const tab of tabs) {
+      try {
+        // Ignora abas já na página de bloqueio
+        if (tab.url && tab.url.startsWith(blockedPage)) continue;
+        const host = new URL(tab.url).hostname.replace(/^www\./i, "").toLowerCase();
+        const match = blockedDomains.find(
+          (d) => host === d || host.endsWith("." + d),
+        );
+        if (match) {
+          const redirectUrl =
+            blockedPage + "?url=" + encodeURIComponent(tab.url);
+          console.log("[Guardian] Redirecionando aba aberta:", host, "→ blocked");
+          await chrome.tabs.update(tab.id, { url: redirectUrl });
+        }
+      } catch {
+        // aba pode ter sido fechada ou ser chrome:// — ignora
+      }
+    }
+  } catch (e) {
+    console.warn("[Guardian] _redirectOpenBlockedTabs falhou:", e.message);
+  }
+}
+
 async function startPolicySyncLoop() {
   if (policySyncTimer) clearInterval(policySyncTimer);
 
@@ -112,11 +144,15 @@ async function startPolicySyncLoop() {
           "blocked:",
           policy.blockedDomains?.length || 0,
         );
+        // Redireciona abas já abertas que estejam em domínios bloqueados
+        const s3Blocked = await getS3Blacklist();
+        const allBlocked = [...new Set([...(policy.blockedDomains || []), ...s3Blocked])];
+        await _redirectOpenBlockedTabs(allBlocked);
       }
     } catch (e) {
       console.warn("[Guardian] Policy sync failed:", e.message);
     }
-  }, 15 * 1000); // 15 segundos
+  }, 5 * 1000); // 5 segundos
 }
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
@@ -435,6 +471,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           console.log("[Guardian] Sincronização manual solicitada");
           const policy = await syncPolicy();
           if (policy) {
+            // Redireciona abas já abertas em domínios bloqueados
+            const s3Blocked = await getS3Blacklist();
+            const allBlocked = [...new Set([...(policy.blockedDomains || []), ...s3Blocked])];
+            await _redirectOpenBlockedTabs(allBlocked);
             sendResponse({
               ok: true,
               policy: policy,
