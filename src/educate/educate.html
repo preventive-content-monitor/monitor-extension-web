@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Conteúdo Educativo - Guardian</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Open+Sans:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --brand-primary: #0891b2;
+        --brand-secondary: #0e7490;
+        --brand-tertiary: #164e63;
+        --info: #06b6d4;
+        --info-light: #ecfeff;
+        --text: #172849;
+        --text-secondary: #4d6089;
+        --bg: #f0fdff;
+        --card-bg: #ffffff;
+        --radius: 18px;
+      }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        font-family: "Open Sans", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(940px 420px at 10% -20%, rgba(6,182,212,0.15), transparent 65%),
+          radial-gradient(920px 380px at 100% 10%, rgba(14,116,144,0.12), transparent 64%),
+          linear-gradient(180deg, #f0fdff 0%, var(--bg) 100%);
+        min-height: 100vh;
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: var(--card-bg);
+        border-radius: var(--radius);
+        border: 1px solid rgba(6,182,212,0.25);
+        box-shadow: 0 22px 52px rgba(22,78,99,0.16);
+        max-width: 600px; width: 100%;
+        text-align: center; overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(125deg, var(--brand-tertiary), var(--brand-primary) 55%, var(--info));
+        padding: 28px 28px 34px; color: white;
+        position: relative; overflow: hidden;
+      }
+
+      .header::after {
+        content: "";
+        position: absolute;
+        width: 260px; height: 260px;
+        background: radial-gradient(circle, rgba(255,255,255,0.2), transparent 70%);
+        right: -70px; top: -130px;
+      }
+
+      .brand-mark {
+        width: 180px; max-width: 75%; height: auto;
+        filter: drop-shadow(0 8px 16px rgba(22,78,99,0.4));
+        margin: 0 auto 16px; position: relative; z-index: 1;
+      }
+
+      .badge {
+        width: 72px; height: 72px;
+        background: rgba(255,255,255,0.22);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 999px;
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 12px; font-size: 34px;
+        position: relative; z-index: 1;
+        animation: pulse 2.2s ease-in-out infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+
+      .header h1 {
+        font-family: "Montserrat", sans-serif;
+        font-size: 1.45rem; font-weight: 800;
+        margin-bottom: 6px; letter-spacing: 0.2px;
+        position: relative; z-index: 1;
+      }
+
+      .header p { opacity: 0.9; font-size: 0.9rem; position: relative; z-index: 1; }
+
+      .content { padding: 24px; }
+
+      .blocked-url {
+        background: var(--info-light);
+        border: 2px solid var(--info);
+        border-radius: 12px;
+        padding: 12px 14px; margin-bottom: 18px;
+        word-break: break-all;
+        font-size: 0.88rem; font-weight: 700;
+        color: var(--brand-secondary);
+      }
+
+      .edu-cards { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+
+      .edu-card {
+        background: linear-gradient(135deg, rgba(6,182,212,0.08), rgba(14,116,144,0.05));
+        border: 1px solid rgba(6,182,212,0.25);
+        border-radius: 12px; padding: 14px 16px; text-align: left;
+      }
+
+      .edu-card h3 {
+        font-family: "Montserrat", sans-serif;
+        font-size: 0.88rem; color: var(--text);
+        margin-bottom: 6px;
+        display: flex; align-items: center; gap: 8px;
+      }
+
+      .edu-card p {
+        font-size: 0.83rem; color: var(--text-secondary);
+        line-height: 1.6; margin: 0;
+      }
+
+      .actions {
+        display: flex; gap: 10px; justify-content: center;
+        flex-wrap: wrap; margin-bottom: 12px;
+      }
+
+      .btn {
+        padding: 11px 18px; border-radius: 12px;
+        font-size: 0.88rem; font-weight: 700;
+        cursor: pointer; border: none; transition: all 0.2s;
+        text-decoration: none; display: inline-flex;
+        align-items: center; gap: 8px;
+      }
+
+      .btn-primary {
+        background: linear-gradient(130deg, var(--brand-primary), var(--brand-secondary));
+        color: white; box-shadow: 0 10px 20px rgba(14,116,144,0.22);
+      }
+      .btn-primary:hover { transform: translateY(-1px); }
+
+      .btn-secondary {
+        background: #f4f8ff; color: #1e3a8a;
+        border: 1px solid rgba(29,124,206,0.32);
+      }
+      .btn-secondary:hover { background: #edf4ff; }
+
+      .btn-continue {
+        background: transparent; color: #0e7490;
+        border: 1px solid rgba(14,116,144,0.4);
+        font-size: 0.82rem;
+      }
+      .btn-continue:hover { background: var(--info-light); }
+
+      .divider { border: none; border-top: 1px solid #e0f7fa; margin: 14px 0; }
+      .continue-note { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 10px; }
+      .timestamp { font-size: 0.75rem; color: var(--text-secondary); margin-top: 14px; }
+
+      .footer {
+        padding: 14px 22px; background: #f0fdff;
+        border-top: 1px solid #a5f3fc;
+        font-size: 0.8rem; color: var(--text-secondary);
+      }
+
+      .guardian-logo {
+        display: flex; align-items: center; justify-content: center;
+        gap: 8px; margin-top: 8px; font-weight: 600; color: var(--text);
+      }
+      .guardian-logo img { width: 110px; max-width: 60vw; height: auto; }
+
+      @media (max-width: 480px) { .actions { flex-direction: column; } }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img class="brand-mark" src="../../assets/logo.png" alt="Guardian" />
+        <div class="badge">📚</div>
+        <h1>Momento de Aprendizado</h1>
+        <p>O Guardian identificou conteúdo que merece atenção</p>
+      </div>
+
+      <div class="content">
+        <div class="blocked-url" id="blockedUrl">Carregando...</div>
+
+        <div class="edu-cards">
+          <div class="edu-card">
+            <h3>🌐 Por que este conteúdo foi sinalizado?</h3>
+            <p>
+              Este site pode conter material que não é adequado para todas as idades.
+              O Guardian usa inteligência artificial para identificar conteúdos que
+              possam ser prejudiciais ao desenvolvimento saudável.
+            </p>
+          </div>
+
+          <div class="edu-card">
+            <h3>🔒 Como navegar com segurança?</h3>
+            <p>
+              Sempre prefira sites conhecidos e confiáveis. Se tiver dúvidas sobre
+              um site, converse com seu responsável antes de acessar.
+              Lembre-se: na internet, informações enganosas são comuns.
+            </p>
+          </div>
+
+          <div class="edu-card">
+            <h3>💬 Fale com seu responsável</h3>
+            <p>
+              Se você acredita que este site é seguro, converse com seu responsável.
+              Ele pode liberar o acesso através do painel Guardian. A comunicação
+              aberta é a melhor ferramenta de proteção digital.
+            </p>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" onclick="goBack()">← Voltar</button>
+          <a href="https://google.com" class="btn btn-secondary">🏠 Ir para Google</a>
+        </div>
+
+        <hr class="divider" />
+        <p class="continue-note">
+          Se você entende os riscos e ainda deseja acessar, clique abaixo. Esta ação será registrada.
+        </p>
+        <div class="actions">
+          <button class="btn btn-continue" id="btnContinue" onclick="continueAnyway()">
+            Continuar mesmo assim →
+          </button>
+        </div>
+
+        <div class="timestamp" id="timestamp"></div>
+      </div>
+
+      <div class="footer">
+        <div>Protegido por</div>
+        <div class="guardian-logo">
+          <img src="../../assets/logo.png" alt="Guardian" />
+        </div>
+      </div>
+    </div>
+
+    <script src="educate.js"></script>
+  </body>
+</html>

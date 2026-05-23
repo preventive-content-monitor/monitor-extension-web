@@ -80,13 +80,21 @@ export async function syncPolicy() {
 
     // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend + S3
     const s3Blocked = await getS3Blacklist();
-    const mergedBlocked = [...new Set([...blockedDomains, ...s3Blocked])];
-    await syncBlocklistToDNR(mergedBlocked, protectionEnabled, allowedDomains);
-    console.log("[Guardian] DNR updated successfully");
+    const policyMode = backendPolicy.mode || POLICY_MODES.BLOCK;
+
+    // Modo BLOCK: DNR bloqueia TODOS os domínios sinalizados + S3 (hard block)
+    // Modo WARN/EDUCATE: DNR usa apenas S3 (conteúdo globalmente perigoso)
+    //   → domínios da política são tratados em _verificarEBloquearUrl (bypassável pelo usuário)
+    const dnrDomains = policyMode === POLICY_MODES.BLOCK
+      ? [...new Set([...blockedDomains, ...s3Blocked])]
+      : [...s3Blocked];
+
+    await syncBlocklistToDNR(dnrDomains, protectionEnabled, allowedDomains);
+    console.log("[Guardian] DNR updated successfully, mode:", policyMode);
 
     // Converte para formato interno
     return {
-      mode: backendPolicy.mode || POLICY_MODES.BLOCK,
+      mode: policyMode,
       riskThreshold: backendPolicy.riskThreshold || 50,
       blockedDomains,
       allowedDomains,

@@ -2,10 +2,10 @@
 // Edite monitor-extension-web/src/shared/constants.js.tpl e rode `terraform apply`.
 
 // Backend API (Spring Boot EC2 - autenticação, política, dispositivos)
-export const API_BASE_URL = "https://ldi2hf9mod.execute-api.us-east-1.amazonaws.com/";
+export const API_BASE_URL = "http://32.193.162.24";
 
 // Events API (API Gateway → SQS → Lambda - envio de eventos)
-export const EVENTS_API_URL = "https://ldi2hf9mod.execute-api.us-east-1.amazonaws.com/";
+export const EVENTS_API_URL = "https://d6o7c81dti.execute-api.us-east-1.amazonaws.com/";
 
 // S3 Blocklist (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
 export const S3_WHITELIST_URL = "https://guardian-blocklist.s3.us-east-1.amazonaws.com/whiteList.json";

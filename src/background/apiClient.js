@@ -181,6 +181,8 @@ export async function fetchPolicy(deviceId, baseUrl) {
     blockedDomains: Array.isArray(blockedDomains) ? blockedDomains : [],
     allowedDomains: Array.isArray(allowedDomains) ? allowedDomains : [],
     riskThreshold: policy.limiteRisco ?? 50,
+    // Mapeia "modo" (backend Kotlin enum) → "mode" (extensão JS)
+    mode: policy.modo || "BLOCK",
     schoolModeEnabled: policy.modoEscolaAtivo === true,
     schoolStart: policy.escolaInicio || "07:00",
     schoolEnd: policy.escolaFim || "17:00",

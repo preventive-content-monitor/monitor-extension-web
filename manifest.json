@@ -35,7 +35,14 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/blocked/blocked.html", "src/blocked/blocked.js"],
+      "resources": [
+        "src/blocked/blocked.html",
+        "src/blocked/blocked.js",
+        "src/warned/warn.html",
+        "src/warned/warn.js",
+        "src/educate/educate.html",
+        "src/educate/educate.js"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
