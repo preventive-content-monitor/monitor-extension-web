@@ -3,9 +3,9 @@ import { isEnrolled } from "./deviceIdentity.js";
 import { fetchPolicy } from "./apiClient.js";
 import { API_BASE_URL, POLICY_MODES } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
-import { getS3Blacklist } from "./blocklistSync.js";
+import { getS3Blacklist, getS3Whitelist } from "./blocklistSync.js";
 
-const POLICY_CACHE_KEY = "cachedPolicy";
+export const POLICY_CACHE_KEY = "cachedPolicy";
 const POLICY_CACHE_TTL = 15 * 1000; // 15 segundos
 
 /**
@@ -79,24 +79,40 @@ export async function syncPolicy() {
     );
 
     // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend + S3
-    const s3Blocked = await getS3Blacklist();
+    const [s3Blocked, s3Allowed] = await Promise.all([getS3Blacklist(), getS3Whitelist()]);
     const policyMode = backendPolicy.mode || POLICY_MODES.BLOCK;
 
     // Modo BLOCK: DNR bloqueia TODOS os domínios sinalizados + S3 (hard block)
     // Modo WARN/EDUCATE: DNR usa apenas S3 (conteúdo globalmente perigoso)
     //   → domínios da política são tratados em _verificarEBloquearUrl (bypassável pelo usuário)
-    const dnrDomains = policyMode === POLICY_MODES.BLOCK
+    const rawDnrDomains = policyMode === POLICY_MODES.BLOCK
       ? [...new Set([...blockedDomains, ...s3Blocked])]
       : [...s3Blocked];
 
+    // S3 whitelist: remove domínios globalmente seguros da lista de bloqueio DNR.
+    // NÃO deve ser passada como allowedDomains para o DNR — isso ativaria o modo
+    // "whitelist-only" (bloqueia TUDO exceto a lista), o que é comportamento errado
+    // quando a lista vem de classificação automática (ex: youtube.com como SAFE).
+    const s3AllowedSet = new Set(
+      s3Allowed.map((d) => d.replace(/^www\./, "").toLowerCase())
+    );
+    const dnrDomains = rawDnrDomains.filter((d) => {
+      const norm = d.replace(/^www\./, "").toLowerCase();
+      return !s3AllowedSet.has(norm);
+    });
+
+    // allowedDomains do DNR = APENAS a lista explícita do responsável (backend).
+    // Isso preserva o modo whitelist-only como uma decisão intencional do responsável,
+    // não algo ativado automaticamente pela classificação do S3.
     await syncBlocklistToDNR(dnrDomains, protectionEnabled, allowedDomains);
     console.log("[Guardian] DNR updated successfully, mode:", policyMode);
 
-    // Converte para formato interno
-    return {
+    // Cache: blockedDomains = backend + S3 blacklist (para _verificarEBloquearUrl em SPAs)
+    //        allowedDomains = APENAS backend (S3 whitelist não deve bypassar política do dispositivo)
+    const result = {
       mode: policyMode,
       riskThreshold: backendPolicy.riskThreshold || 50,
-      blockedDomains,
+      blockedDomains: [...new Set([...blockedDomains, ...s3Blocked])],
       allowedDomains,
       protectionEnabled,
       nomeDependente: dependentNickname,
@@ -105,6 +121,13 @@ export async function syncPolicy() {
       schoolEnd: backendPolicy.schoolEnd || "17:00",
       fromBackend: true,
     };
+
+    // Salva no cache — garante que _verificarEBloquearUrl sempre lê política atualizada
+    await chrome.storage.local.set({
+      [POLICY_CACHE_KEY]: { policy: result, timestamp: Date.now() },
+    });
+
+    return result;
   } catch (e) {
     console.warn(
       "[Guardian] Failed to fetch policy from backend, using local:",

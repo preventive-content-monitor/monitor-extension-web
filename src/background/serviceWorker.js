@@ -21,6 +21,7 @@ import { refreshS3Blocklist, getS3Blacklist } from "./blocklistSync.js";
 
 let uploadTimer = null;
 let policySyncTimer = null;
+let s3RefreshTimer = null;
 
 // Domínios que o usuário optou por continuar acessando na sessão atual (WARN/EDUCATE bypass)
 const warnBypassSet = new Set();
@@ -151,8 +152,9 @@ async function _redirectOpenBlockedTabs(blockedDomains, mode) {
 
 async function startPolicySyncLoop() {
   if (policySyncTimer) clearInterval(policySyncTimer);
+  if (s3RefreshTimer) clearInterval(s3RefreshTimer);
 
-  // Sincroniza política a cada 15 segundos para pegar mudanças do dashboard
+  // Sincroniza política a cada 5 segundos para pegar mudanças do dashboard
   policySyncTimer = setInterval(async () => {
     try {
       const policy = await syncPolicy();
@@ -171,7 +173,14 @@ async function startPolicySyncLoop() {
     } catch (e) {
       console.warn("[Guardian] Policy sync failed:", e.message);
     }
-  }, 5 * 1000); // 5 segundos
+  }, 5 * 1000);
+
+  // Atualiza S3 blacklist/whitelist a cada 60s com ETag (304 se não mudou — tráfego mínimo)
+  s3RefreshTimer = setInterval(async () => {
+    await refreshS3Blocklist().catch((e) =>
+      console.warn("[Guardian] S3 refresh periódico falhou:", e.message)
+    );
+  }, 60 * 1000);
 }
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
@@ -271,6 +280,10 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
 
   try {
     const url = details.url || "";
+
+    // Ignora URLs internas do navegador (edge://, chrome://, about:, etc.)
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+
     const u = new URL(url);
 
     // Apenas verifica bloqueio — o evento será enfileirado pelo PAGE_META
@@ -286,6 +299,10 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
   if (details.frameId !== 0) return;
   try {
     const url = details.url || "";
+
+    // Ignora URLs internas do navegador (edge://, chrome://, about:, etc.)
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return;
+
     const u = new URL(url);
     await _verificarEBloquearUrl(url, u.hostname, details.tabId);
 
@@ -674,16 +691,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       if (msg?.type === "PAGE_META") {
-        await enqueueEvent({
-          type: EVENT_TYPES.NAVIGATION,
-          ts: Date.now(),
-          occurredAt: new Date().toISOString(),
-          url: msg.url,
-          title: msg.title,
-          metadata: {
-            domain: msg.domain,
-          },
-        });
+        const pageUrl = msg.url || "";
+        // Ignora URLs internas do navegador (edge://, chrome://, about:, etc.)
+        if (pageUrl.startsWith("http://") || pageUrl.startsWith("https://")) {
+          await enqueueEvent({
+            type: EVENT_TYPES.NAVIGATION,
+            ts: Date.now(),
+            occurredAt: new Date().toISOString(),
+            url: pageUrl,
+            title: msg.title,
+            metadata: {
+              domain: msg.domain,
+            },
+          });
+          // Upload imediato — não espera o timer de 10s
+          // Isso reduz o tempo de bloqueio de ~15s para ~5s (só o policy sync)
+          _uploadImediato(s);
+        }
       }
 
       if (msg?.type === "SEARCH_QUERY") {
