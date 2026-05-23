@@ -3,7 +3,7 @@ import { isEnrolled } from "./deviceIdentity.js";
 import { fetchPolicy } from "./apiClient.js";
 import { API_BASE_URL, POLICY_MODES } from "../shared/constants.js";
 import { syncBlocklistToDNR } from "./dnrRules.js";
-import { getS3Blacklist, getS3Whitelist } from "./blocklistSync.js";
+import { getS3Blacklist } from "./blocklistSync.js";
 
 export const POLICY_CACHE_KEY = "cachedPolicy";
 const POLICY_CACHE_TTL = 15 * 1000; // 15 segundos
@@ -78,32 +78,24 @@ export async function syncPolicy() {
       protectionEnabled,
     );
 
-    // IMPORTANTE: Atualiza o DNR com a blocklist/allowlist do backend + S3
-    const [s3Blocked, s3Allowed] = await Promise.all([getS3Blacklist(), getS3Whitelist()]);
+    // IMPORTANTE: Atualiza o DNR com a blocklist do backend + S3 blacklist
+    const s3Blocked = await getS3Blacklist();
     const policyMode = backendPolicy.mode || POLICY_MODES.BLOCK;
 
-    // Modo BLOCK: DNR bloqueia TODOS os domínios sinalizados + S3 (hard block)
-    // Modo WARN/EDUCATE: DNR usa apenas S3 (conteúdo globalmente perigoso)
+    // Modo BLOCK: DNR bloqueia domínios do responsável + S3 blacklist (score >= 70)
+    // Modo WARN/EDUCATE: DNR usa apenas S3 blacklist (conteúdo globalmente perigoso)
     //   → domínios da política são tratados em _verificarEBloquearUrl (bypassável pelo usuário)
-    const rawDnrDomains = policyMode === POLICY_MODES.BLOCK
+    //
+    // NOTA: A S3 whitelist NÃO é usada aqui. Motivos:
+    //  1. Ela causaria bug: poderia remover bloqueios explícitos do responsável
+    //  2. Ela não é necessária: a blacklist já contém só conteúdo score >= 70
+    //  3. Ela cresceria indefinidamente (todo site safe vira entrada)
+    //  A whitelist existe apenas no backend (para cache de classificação e /api/blocklist/verificar)
+    const dnrDomains = policyMode === POLICY_MODES.BLOCK
       ? [...new Set([...blockedDomains, ...s3Blocked])]
       : [...s3Blocked];
 
-    // S3 whitelist: remove domínios globalmente seguros da lista de bloqueio DNR.
-    // NÃO deve ser passada como allowedDomains para o DNR — isso ativaria o modo
-    // "whitelist-only" (bloqueia TUDO exceto a lista), o que é comportamento errado
-    // quando a lista vem de classificação automática (ex: youtube.com como SAFE).
-    const s3AllowedSet = new Set(
-      s3Allowed.map((d) => d.replace(/^www\./, "").toLowerCase())
-    );
-    const dnrDomains = rawDnrDomains.filter((d) => {
-      const norm = d.replace(/^www\./, "").toLowerCase();
-      return !s3AllowedSet.has(norm);
-    });
-
     // allowedDomains do DNR = APENAS a lista explícita do responsável (backend).
-    // Isso preserva o modo whitelist-only como uma decisão intencional do responsável,
-    // não algo ativado automaticamente pela classificação do S3.
     await syncBlocklistToDNR(dnrDomains, protectionEnabled, allowedDomains);
     console.log("[Guardian] DNR updated successfully, mode:", policyMode);
 

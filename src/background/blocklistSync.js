@@ -1,7 +1,14 @@
-import { S3_BLACKLIST_URL, S3_WHITELIST_URL } from "../shared/constants.js";
+import { S3_BLACKLIST_URL } from "../shared/constants.js";
 
 const S3_CACHE_KEY = "s3BlocklistData";
-// formato: { blacklist: string[], whitelist: string[], blacklistETag: string, whitelistETag: string }
+// formato: { blacklist: string[], blacklistETag: string }
+//
+// NOTA: a whitelist foi removida deste módulo.
+// Motivos:
+//  1. Causa bug: removia bloqueios explícitos do responsável se o site estava na whitelist S3
+//  2. Cresce indefinidamente (todo site safe = nova entrada)
+//  3. A extensão não precisa dela para o DNR — a blacklist já contém só conteúdo score >= 70
+//  A whitelist existe apenas no DB do backend (cache de classificação e /api/blocklist/verificar)
 
 async function fetchList(url, storedETag) {
     if (!url) return { data: null, etag: storedETag };
@@ -12,11 +19,11 @@ async function fetchList(url, storedETag) {
         const resp = await fetch(url, { headers });
 
         if (resp.status === 304) {
-            // Not Modified — usa cache
+            // Not Modified — CloudFront/S3 confirmou que nada mudou (zero bytes transferidos)
             return { data: null, etag: storedETag };
         }
         if (!resp.ok) {
-            console.warn("[Guardian] S3 retornou status", resp.status, "para", url);
+            console.warn("[Guardian] CDN retornou status", resp.status, "para", url);
             return { data: null, etag: storedETag };
         }
 
@@ -24,24 +31,26 @@ async function fetchList(url, storedETag) {
         const etag = resp.headers.get("ETag") || "";
         return { data, etag };
     } catch (e) {
-        console.warn("[Guardian] S3 fetch error:", url, e.message);
+        console.warn("[Guardian] Blocklist fetch error:", url, e.message);
         return { data: null, etag: storedETag };
     }
 }
 
 /**
- * Busca whiteList.json e blackList.json do S3 com suporte a ETag (304 Not Modified).
- * Armazena resultado em chrome.storage.local para uso offline.
- * Chame isso no onInstalled, onStartup e periodicamente.
+ * Busca blackList.json via CloudFront com suporte a ETag (304 Not Modified).
+ *
+ * Com CloudFront:
+ *  - 1000 usuarios → todos servidos pelo edge CDN (cache hit)
+ *  - S3 recebe apenas 1 requisicao por TTL de 5 minutos
+ *  - ETag funciona normalmente (CloudFront repassa ao viewer)
+ *
+ * Chame no onInstalled, onStartup e pelo s3RefreshTimer (60s).
  */
 export async function refreshS3Blocklist() {
     const stored =
         (await chrome.storage.local.get(S3_CACHE_KEY))[S3_CACHE_KEY] || {};
 
-    const [blackResult, whiteResult] = await Promise.all([
-        fetchList(S3_BLACKLIST_URL, stored.blacklistETag || ""),
-        fetchList(S3_WHITELIST_URL, stored.whitelistETag || ""),
-    ]);
+    const blackResult = await fetchList(S3_BLACKLIST_URL, stored.blacklistETag || "");
 
     const updated = { ...stored };
 
@@ -49,33 +58,21 @@ export async function refreshS3Blocklist() {
         updated.blacklist = blackResult.data;
         updated.blacklistETag = blackResult.etag;
     }
-    if (whiteResult.data !== null) {
-        updated.whitelist = whiteResult.data;
-        updated.whitelistETag = whiteResult.etag;
-    }
 
     if (!Array.isArray(updated.blacklist)) updated.blacklist = [];
-    if (!Array.isArray(updated.whitelist)) updated.whitelist = [];
 
     await chrome.storage.local.set({ [S3_CACHE_KEY]: updated });
 
     console.log(
-        `[Guardian] S3 blocklist atualizado: ${updated.blacklist.length} bloqueados, ${updated.whitelist.length} permitidos`,
+        `[Guardian] Blocklist atualizada via CDN: ${updated.blacklist.length} bloqueados`
     );
 
     return updated;
 }
 
-/** Retorna a blacklist do S3 (do cache local, sem fetch). */
+/** Retorna a blacklist do cache local (sem fetch — zero latência). */
 export async function getS3Blacklist() {
     const stored =
         (await chrome.storage.local.get(S3_CACHE_KEY))[S3_CACHE_KEY] || {};
     return Array.isArray(stored.blacklist) ? stored.blacklist : [];
-}
-
-/** Retorna a whitelist do S3 (do cache local, sem fetch). */
-export async function getS3Whitelist() {
-    const stored =
-        (await chrome.storage.local.get(S3_CACHE_KEY))[S3_CACHE_KEY] || {};
-    return Array.isArray(stored.whitelist) ? stored.whitelist : [];
 }

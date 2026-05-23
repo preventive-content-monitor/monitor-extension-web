@@ -7,8 +7,9 @@ export const API_BASE_URL = "http://100.30.14.44";
 // Events API (API Gateway → SQS → Lambda - envio de eventos)
 export const EVENTS_API_URL = "https://nno4aqiw20.execute-api.us-east-1.amazonaws.com/";
 
-// S3 Blocklist (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
-export const S3_WHITELIST_URL = "https://guardian-blocklist.s3.us-east-1.amazonaws.com/whiteList.json";
+// Blocklist via CloudFront CDN (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
+// NAO usar a URL do S3 diretamente — com 1000+ usuarios causaria sobrecarga.
+// CloudFront serve do edge mais proximo e o S3 recebe apenas 1 requisicao por TTL (5 min).
 export const S3_BLACKLIST_URL = "https://guardian-blocklist.s3.us-east-1.amazonaws.com/blackList.json";
 
 // Tipos de evento compatíveis com o backend Guardian
