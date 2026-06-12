@@ -19,11 +19,11 @@ async function fetchList(url, storedETag) {
         const resp = await fetch(url, { headers });
 
         if (resp.status === 304) {
-            // Not Modified — CloudFront/S3 confirmou que nada mudou (zero bytes transferidos)
+            // Not Modified — S3 confirmou que nada mudou (zero bytes transferidos)
             return { data: null, etag: storedETag };
         }
         if (!resp.ok) {
-            console.warn("[Guardian] CDN retornou status", resp.status, "para", url);
+            console.warn("[Guardian] S3 retornou status", resp.status, "para", url);
             return { data: null, etag: storedETag };
         }
 
@@ -37,12 +37,13 @@ async function fetchList(url, storedETag) {
 }
 
 /**
- * Busca blackList.json via CloudFront com suporte a ETag (304 Not Modified).
+ * Busca blackList.json via S3 publico com suporte a ETag (304 Not Modified).
  *
- * Com CloudFront:
- *  - 1000 usuarios → todos servidos pelo edge CDN (cache hit)
- *  - S3 recebe apenas 1 requisicao por TTL de 5 minutos
- *  - ETag funciona normalmente (CloudFront repassa ao viewer)
+ * O S3 retorna ETag automaticamente; o header If-None-Match evita transferir
+ * o arquivo inteiro quando nao ha mudancas (zero bytes transferidos no 304).
+ *
+ * CloudFront foi removido: role voclabs do AWS Academy nao permite
+ * cloudfront:CreateDistribution. A extensao Chrome acessa o S3 regional direto.
  *
  * Chame no onInstalled, onStartup e pelo s3RefreshTimer (60s).
  */
@@ -64,7 +65,7 @@ export async function refreshS3Blocklist() {
     await chrome.storage.local.set({ [S3_CACHE_KEY]: updated });
 
     console.log(
-        `[Guardian] Blocklist atualizada via CDN: ${updated.blacklist.length} bloqueados`
+        `[Guardian] Blocklist atualizada via S3: ${updated.blacklist.length} bloqueados`
     );
 
     return updated;

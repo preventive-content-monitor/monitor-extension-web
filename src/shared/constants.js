@@ -2,14 +2,14 @@
 // Edite monitor-extension-web/src/shared/constants.js.tpl e rode `terraform apply`.
 
 // Backend API (Spring Boot EC2 - autenticação, política, dispositivos)
-export const API_BASE_URL = "http://100.30.14.44";
+export const API_BASE_URL = "http://98.80.116.158";
 
-// Events API (API Gateway → SQS → Lambda - envio de eventos)
-export const EVENTS_API_URL = "https://nno4aqiw20.execute-api.us-east-1.amazonaws.com/";
+// Events API — usa o mesmo EC2 do backend (API Gateway retorna 503)
+export const EVENTS_API_URL = API_BASE_URL;
 
-// Blocklist via CloudFront CDN (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
-// NAO usar a URL do S3 diretamente — com 1000+ usuarios causaria sobrecarga.
-// CloudFront serve do edge mais proximo e o S3 recebe apenas 1 requisicao por TTL (5 min).
+// Blocklist via S3 publico (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
+// CloudFront nao esta disponivel no AWS Academy (role voclabs nao tem cloudfront:CreateDistribution).
+// O bucket S3 esta configurado como publico com CORS habilitado para acesso pela extensao Chrome.
 export const S3_BLACKLIST_URL = "https://guardian-blocklist.s3.us-east-1.amazonaws.com/blackList.json";
 
 // Tipos de evento compatíveis com o backend Guardian

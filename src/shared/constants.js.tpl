@@ -7,10 +7,10 @@ export const API_BASE_URL = "${api_base_url}";
 // Events API (API Gateway → SQS → Lambda - envio de eventos)
 export const EVENTS_API_URL = "${events_api_url}";
 
-// Blocklist via CloudFront CDN (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
-// NAO usar a URL do S3 diretamente — com 1000+ usuarios causaria sobrecarga.
-// CloudFront serve do edge mais proximo e o S3 recebe apenas 1 requisicao por TTL (5 min).
-export const S3_BLACKLIST_URL = "${cloudfront_blacklist_url}";
+// Blocklist via S3 publico (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
+// CloudFront nao esta disponivel no AWS Academy (role voclabs nao tem cloudfront:CreateDistribution).
+// O bucket S3 esta configurado como publico com CORS habilitado para acesso pela extensao Chrome.
+export const S3_BLACKLIST_URL = "${s3_blacklist_url}";
 
 // Tipos de evento compatíveis com o backend Guardian
 export const EVENT_TYPES = {

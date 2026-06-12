@@ -45,23 +45,24 @@ chrome.runtime.onInstalled.addListener(async () => {
       }
     }
 
-    // Tenta sincronizar política do backend primeiro
+    // Baixa S3 blacklist ANTES de sincronizar política — syncPolicy usa getS3Blacklist() internamente
+    await refreshS3Blocklist().catch((e) =>
+      console.warn("[Guardian] S3 refresh falhou no install:", e.message),
+    );
+
+    // Sincroniza política do backend (já inclui S3 blacklist no DNR)
     const policy = await syncPolicy();
 
-    // Se não conseguiu (não enrolled ou erro), usa local
+    // Se não conseguiu (não enrolled ou erro), usa local + S3
     if (!policy) {
       const s = await getSettings();
+      const s3Blocked = await getS3Blacklist();
       await syncBlocklistToDNR(
-        s.blocklistDomains || [],
+        [...new Set([...(s.blocklistDomains || []), ...s3Blocked])],
         s.protectionEnabled !== false,
         s.allowlistDomains || [],
       );
     }
-
-    // Atualiza listas S3 (whiteList + blackList) com suporte a ETag
-    await refreshS3Blocklist().catch((e) =>
-      console.warn("[Guardian] S3 refresh falhou no install:", e.message),
-    );
 
     await startUploadLoop();
     await startPolicySyncLoop();
@@ -88,12 +89,12 @@ chrome.runtime.onStartup.addListener(async () => {
       }
     }
 
-    await syncPolicy();
-
-    // Atualiza listas S3 (whiteList + blackList) com suporte a ETag
+    // Baixa S3 blacklist ANTES de sincronizar política
     await refreshS3Blocklist().catch((e) =>
       console.warn("[Guardian] S3 refresh falhou no startup:", e.message),
     );
+
+    await syncPolicy();
 
     await startUploadLoop();
     await startPolicySyncLoop();
@@ -294,6 +295,45 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   }
 });
 
+// Plataformas mistas com conteúdo específico por URL
+const PLATAFORMAS_MISTAS_SW = new Set([
+  "youtube.com", "www.youtube.com", "youtu.be",
+  "twitch.tv", "www.twitch.tv",
+  "reddit.com", "www.reddit.com",
+  "tiktok.com", "www.tiktok.com",
+]);
+
+function _ehConteudoEspecifico(hostname, url) {
+  const h = hostname.toLowerCase().replace(/^www\./, "");
+  if (h === "youtube.com") return url.includes("/watch?");
+  if (h === "youtu.be")   return true;
+  if (h === "twitch.tv")  return /twitch\.tv\/\w+\/(clip|videos)/.test(url);
+  if (h === "tiktok.com") return url.includes("/video/");
+  return false;
+}
+
+/**
+ * Aguarda até o título da aba ser atualizado (diferente do anterior)
+ * ou até o timeout, e retorna o título atual da aba.
+ */
+async function _aguardarTituloTab(tabId, tituloAnterior, tentativas = 6, intervaloMs = 500) {
+  for (let i = 0; i < tentativas; i++) {
+    await new Promise((r) => setTimeout(r, intervaloMs));
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      const titulo = tab.title || "";
+      // Considera carregado quando o título mudou e não é genérico
+      if (titulo && titulo !== tituloAnterior && !["YouTube", "Twitch", "TikTok", "Reddit"].includes(titulo.trim())) {
+        return titulo;
+      }
+    } catch {
+      break;
+    }
+  }
+  // Retorna o que tiver após o timeout
+  try { return (await chrome.tabs.get(tabId)).title || ""; } catch { return ""; }
+}
+
 // Detecta navegação dentro de SPAs (YouTube, etc.) que não recarregam a página
 chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
   if (details.frameId !== 0) return;
@@ -307,15 +347,85 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
     await _verificarEBloquearUrl(url, u.hostname, details.tabId);
 
     const s = await getSettings();
-    await enqueueEvent({
-      type: EVENT_TYPES.NAVIGATION,
-      ts: Date.now(),
-      occurredAt: new Date().toISOString(),
-      url,
-      title: "",
-      metadata: { domain: u.hostname, tabId: details.tabId, spa: true },
-    });
-    _uploadImediato(s);
+
+    // Para plataformas mistas com conteúdo específico (ex: youtube.com/watch?v=...)
+    // aguarda o título real carregar e classifica via IA imediatamente
+    const host = u.hostname.toLowerCase();
+    if (PLATAFORMAS_MISTAS_SW.has(host) && _ehConteudoEspecifico(host, url) && s.deviceId) {
+      // Pega título anterior para detectar mudança
+      let tituloAnterior = "";
+      try { tituloAnterior = (await chrome.tabs.get(details.tabId)).title || ""; } catch {}
+
+      // Aguarda título real em background — não bloqueia o registro do evento
+      (async () => {
+        const titulo = await _aguardarTituloTab(details.tabId, tituloAnterior);
+        if (!titulo) return;
+
+        console.log("[Guardian] SPA título detectado:", titulo, "→ classificando...");
+
+        // Enfileira evento com título real
+        await enqueueEvent({
+          type: EVENT_TYPES.NAVIGATION,
+          ts: Date.now(),
+          occurredAt: new Date().toISOString(),
+          url,
+          title: titulo,
+          metadata: { domain: host, tabId: details.tabId, spa: true },
+        });
+
+        // Classifica via backend e bloqueia se necessário
+        const baseUrl = s.backendUrl || API_BASE_URL;
+        try {
+          const resp = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/blocklist/classificar-agora`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, titulo, dispositivoId: s.deviceId }),
+            // Contexto adicional será enriquecido via CLASSIFICAR_AGORA do content script
+          });
+          if (resp.ok) {
+            const resultado = await resp.json();
+            console.log("[Guardian] SPA classificação:", url, "→", resultado.acao, resultado.motivo);
+
+            const acao = resultado.acao;
+            if (acao === "BLOCK" || acao === "WARN" || acao === "EDUCATE") {
+              const h2 = u.hostname.replace(/^www\./i, "").toLowerCase();
+              let targetPage;
+              if (acao === "WARN") {
+                targetPage = chrome.runtime.getURL(`src/warned/warn.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h2)}`);
+              } else if (acao === "EDUCATE") {
+                targetPage = chrome.runtime.getURL(`src/educate/educate.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h2)}`);
+              } else {
+                targetPage = chrome.runtime.getURL(`src/blocked/blocked.html?url=${encodeURIComponent(url)}`);
+              }
+              await chrome.tabs.update(details.tabId, { url: targetPage });
+              console.log("[Guardian] SPA bloqueio imediato:", url, "→", acao);
+            }
+          }
+        } catch (e) {
+          console.warn("[Guardian] SPA classificação falhou:", e?.message);
+        }
+
+        _uploadImediato(s);
+      })();
+
+      return; // evento será enfileirado dentro do bloco acima com o título correto
+    }
+
+    // Para plataformas mistas (ex: youtube.com homepage, search) que não são
+    // páginas de conteúdo específico — só enfileira se não for plataforma mista.
+    // Para plataformas mistas sem conteúdo específico, o PAGE_META do content script
+    // registra o título correto quando disponível.
+    if (!PLATAFORMAS_MISTAS_SW.has(host)) {
+      await enqueueEvent({
+        type: EVENT_TYPES.NAVIGATION,
+        ts: Date.now(),
+        occurredAt: new Date().toISOString(),
+        url,
+        title: "",
+        metadata: { domain: u.hostname, tabId: details.tabId, spa: true },
+      });
+      _uploadImediato(s);
+    }
   } catch (e) {
     console.warn("historyStateUpdated log failed:", e?.message || e);
   }
@@ -434,8 +544,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await startUploadLoop();
           await startPolicySyncLoop();
 
-          // Sincroniza política imediatamente
-          await syncPolicy();
+          // Sincroniza política imediatamente e redireciona abas já abertas
+          const enrolledPolicy = await syncPolicy();
+          if (enrolledPolicy) {
+            const s3Blocked = await getS3Blacklist();
+            const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
+            await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
+          }
 
           sendResponse({ ok: true, ...result });
         } catch (e) {
@@ -690,22 +805,99 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
+      // Título real de vídeo/conteúdo carregou — classifica via IA agora e bloqueia se necessário
+      if (msg?.type === "CLASSIFICAR_AGORA") {
+        const pageUrl = msg.url || "";
+        if (!pageUrl.startsWith("http")) { sendResponse({ ok: true }); return; }
+
+        const currentSettings = await getSettings();
+        const deviceId = currentSettings.deviceId;
+        if (!deviceId) { sendResponse({ ok: true }); return; }
+
+        const baseUrl = currentSettings.backendUrl || API_BASE_URL;
+        try {
+          const resp = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/blocklist/classificar-agora`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: pageUrl,
+              titulo: msg.title || "",
+              descricao: msg.descricao || "",
+              restricaoEtaria: msg.restricaoEtaria || false,
+              categoria: msg.categoria || "",
+              dispositivoId: deviceId,
+            }),
+          });
+
+          if (resp.ok) {
+            const resultado = await resp.json();
+            console.log("[Guardian] ClassificarAgora:", pageUrl, "→", resultado.acao, resultado.motivo);
+
+            const acao = resultado.acao;
+            if (acao === "BLOCK" || acao === "WARN" || acao === "EDUCATE") {
+              const tabId = sender.tab?.id;
+              if (tabId) {
+                const host = new URL(pageUrl).hostname.replace(/^www\./i, "").toLowerCase();
+                let targetPage;
+                if (acao === "WARN") {
+                  targetPage = chrome.runtime.getURL(`src/warned/warn.html?url=${encodeURIComponent(pageUrl)}&domain=${encodeURIComponent(host)}`);
+                } else if (acao === "EDUCATE") {
+                  targetPage = chrome.runtime.getURL(`src/educate/educate.html?url=${encodeURIComponent(pageUrl)}&domain=${encodeURIComponent(host)}`);
+                } else {
+                  targetPage = chrome.runtime.getURL(`src/blocked/blocked.html?url=${encodeURIComponent(pageUrl)}`);
+                }
+                await chrome.tabs.update(tabId, { url: targetPage });
+                console.log("[Guardian] Bloqueio imediato por IA:", pageUrl, "→", acao);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Guardian] ClassificarAgora falhou:", e?.message);
+        }
+        sendResponse({ ok: true });
+        return;
+      }
+
+      // PAGE_META_UPDATED: título real da plataforma mista carregou.
+      // NÃO enfileira evento — o onHistoryStateUpdated já fez isso com o título real.
+      // Apenas responde ok para não bloquear o content script.
+      if (msg?.type === "PAGE_META_UPDATED") {
+        sendResponse({ ok: true });
+        return;
+      }
+
       if (msg?.type === "PAGE_META") {
         const pageUrl = msg.url || "";
-        // Ignora URLs internas do navegador (edge://, chrome://, about:, etc.)
         if (pageUrl.startsWith("http://") || pageUrl.startsWith("https://")) {
+          const pageHost = new URL(pageUrl).hostname.toLowerCase();
+
+          // Ignora PAGE_META de plataformas mistas em páginas de conteúdo específico
+          // (ex: youtube.com/watch?v=...) — o onHistoryStateUpdated já enfileira
+          // com o título real após aguardar o carregamento. Evita duplicatas.
+          const ehPlataformaMistaMsg = PLATAFORMAS_MISTAS_SW.has(pageHost);
+          const ehConteudoMsg = _ehConteudoEspecifico(pageHost, pageUrl);
+          if (ehPlataformaMistaMsg && ehConteudoMsg) {
+            sendResponse({ ok: true });
+            return;
+          }
+
+          // Ignora títulos genéricos de plataformas (ex: "YouTube", "Twitch")
+          const tituloGenerico = ["YouTube", "Twitch", "TikTok", "Reddit", ""].includes(
+            (msg.title || "").trim()
+          );
+          if (ehPlataformaMistaMsg && tituloGenerico) {
+            sendResponse({ ok: true });
+            return;
+          }
+
           await enqueueEvent({
             type: EVENT_TYPES.NAVIGATION,
             ts: Date.now(),
             occurredAt: new Date().toISOString(),
             url: pageUrl,
             title: msg.title,
-            metadata: {
-              domain: msg.domain,
-            },
+            metadata: { domain: msg.domain },
           });
-          // Upload imediato — não espera o timer de 10s
-          // Isso reduz o tempo de bloqueio de ~15s para ~5s (só o policy sync)
           _uploadImediato(s);
         }
       }
