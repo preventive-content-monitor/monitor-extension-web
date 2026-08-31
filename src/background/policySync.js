@@ -96,7 +96,7 @@ export async function syncPolicy() {
       : [...s3Blocked];
 
     // allowedDomains do DNR = APENAS a lista explícita do responsável (backend).
-    await syncBlocklistToDNR(dnrDomains, protectionEnabled, allowedDomains);
+    await syncBlocklistToDNR(dnrDomains, protectionEnabled, allowedDomains, policyMode);
     console.log("[Guardian] DNR updated successfully, mode:", policyMode);
 
     // Cache: blockedDomains = backend + S3 blacklist (para _verificarEBloquearUrl em SPAs)

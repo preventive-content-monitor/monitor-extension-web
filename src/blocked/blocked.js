@@ -4,21 +4,21 @@
  * - Registra o evento no backend
  */
 
-// Pega a URL bloqueada dos parâmetros
-const params = new URLSearchParams(window.location.search);
-const blockedUrl = params.get("url") || "URL desconhecida";
-const mode = params.get("mode") || "blacklist"; // blacklist ou whitelist
+import { lerParametrosIntercepcao } from "../shared/paramsIntercepcao.js";
 
-// Extrai o domínio
-let blockedDomain = "desconhecido";
-try {
-  blockedDomain = new URL(blockedUrl).hostname;
-} catch (e) {
-  // URL inválida - pode ser texto simples no modo whitelist
-  blockedDomain = blockedUrl;
+const { url: blockedUrl, domain, mode } = lerParametrosIntercepcao();
+
+// Extrai o domínio (o helper já tenta; aqui cobre o caso de texto simples)
+let blockedDomain = domain;
+if (!blockedDomain) {
+  try {
+    blockedDomain = new URL(blockedUrl).hostname;
+  } catch (e) {
+    // URL inválida — pode ser texto simples no modo whitelist
+    blockedDomain = blockedUrl || "desconhecido";
+  }
 }
 
-// Exibe a URL formatada
 document.getElementById("blockedUrl").textContent = blockedDomain;
 
 // Atualiza mensagem para modo whitelist
@@ -28,7 +28,7 @@ if (mode === "whitelist") {
     reasonBox.innerHTML = `
       <h3>🔒 Por que este site foi bloqueado?</h3>
       <p>
-        Seu responsável configurou uma lista de sites permitidos. 
+        Seu responsável configurou uma lista de sites permitidos.
         <strong>Apenas os sites dessa lista podem ser acessados.</strong>
         Este site não está na lista de sites permitidos.
       </p>
@@ -41,19 +41,21 @@ const now = new Date();
 document.getElementById("timestamp").textContent =
   `Bloqueado em ${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR")}`;
 
-// Função voltar
-window.goBack = function () {
+function goBack() {
   if (window.history.length > 1) {
     window.history.back();
   } else {
     window.location.href = "https://google.com";
   }
-};
+}
+
+// addEventListener em vez de onclick inline: o CSP padrão do Manifest V3
+// (script-src 'self') bloqueia handlers inline, deixando o botão inerte.
+document.getElementById("btnBack").addEventListener("click", goBack);
 
 // Registra o evento de bloqueio no backend
 async function registerBlockEvent() {
   try {
-    // Envia mensagem pro service worker registrar o evento
     await chrome.runtime.sendMessage({
       type: "BLOCK_ATTEMPT",
       url: blockedUrl,
@@ -66,5 +68,4 @@ async function registerBlockEvent() {
   }
 }
 
-// Registra o evento
 registerBlockEvent();

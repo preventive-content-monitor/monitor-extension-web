@@ -40,8 +40,7 @@
         "src/blocked/blocked.js",
         "src/warned/warn.html",
         "src/warned/warn.js",
-        "src/educate/educate.html",
-        "src/educate/educate.js"
+        "src/shared/paramsIntercepcao.js"
       ],
       "matches": ["<all_urls>"]
     }

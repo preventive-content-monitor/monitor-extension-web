@@ -15,7 +15,12 @@ import {
   registerUser,
 } from "./apiClient.js";
 import { EVENT_TYPES, API_BASE_URL, EVENTS_API_URL } from "../shared/constants.js";
-import { syncBlocklistToDNR } from "./dnrRules.js";
+import {
+  syncBlocklistToDNR,
+  adicionarBypassDNR,
+  limparBypassDNR,
+  INTERCEPTA_CONTEUDO,
+} from "./dnrRules.js";
 import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
 import { refreshS3Blocklist, getS3Blacklist } from "./blocklistSync.js";
 
@@ -45,6 +50,10 @@ chrome.runtime.onInstalled.addListener(async () => {
       }
     }
 
+    // Bypasses de WARN/EDUCATE valem só pela sessão; regras do DNR sobrevivem
+    // a reinícios, então precisam ser descartadas aqui.
+    await limparBypassDNR().catch(() => {});
+
     // Baixa S3 blacklist ANTES de sincronizar política — syncPolicy usa getS3Blacklist() internamente
     await refreshS3Blocklist().catch((e) =>
       console.warn("[Guardian] S3 refresh falhou no install:", e.message),
@@ -61,6 +70,7 @@ chrome.runtime.onInstalled.addListener(async () => {
         [...new Set([...(s.blocklistDomains || []), ...s3Blocked])],
         s.protectionEnabled !== false,
         s.allowlistDomains || [],
+        _modoLocal(s),
       );
     }
 
@@ -89,6 +99,9 @@ chrome.runtime.onStartup.addListener(async () => {
       }
     }
 
+    // Bypasses de WARN/EDUCATE não sobrevivem ao reinício do navegador
+    await limparBypassDNR().catch(() => {});
+
     // Baixa S3 blacklist ANTES de sincronizar política
     await refreshS3Blocklist().catch((e) =>
       console.warn("[Guardian] S3 refresh falhou no startup:", e.message),
@@ -107,20 +120,37 @@ chrome.runtime.onStartup.addListener(async () => {
  * Após atualizar o DNR, redireciona abas já abertas que estejam em domínios bloqueados.
  * Isso evita que o usuário precise dar F5 para ver o bloqueio.
  */
+/**
+ * Modo da política a partir das configurações locais.
+ * Usado nos caminhos de fallback, quando o backend não respondeu — espelha
+ * o buildLocalPolicy do policySync para o DNR não cair sempre em BLOCK.
+ */
+function _modoLocal(settings) {
+  switch (settings?.actionOnHighRisk) {
+    case "warn":
+      return "WARN";
+    case "educate":
+      return "EDUCATE";
+    default:
+      return "BLOCK";
+  }
+}
+
 async function _redirectOpenBlockedTabs(blockedDomains, mode) {
   if (!blockedDomains || blockedDomains.length === 0) return;
+  // EDUCATE não interrompe a navegação em curso
+  if (!INTERCEPTA_CONTEUDO(mode)) return;
   try {
     const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] });
     const blockedPage  = chrome.runtime.getURL("src/blocked/blocked.html");
     const warnPage     = chrome.runtime.getURL("src/warned/warn.html");
-    const educatePage  = chrome.runtime.getURL("src/educate/educate.html");
     const policyMode   = mode || "BLOCK";
 
     for (const tab of tabs) {
       try {
         // Ignora abas já em páginas de ação do Guardian
         const u = tab.url || "";
-        if (u.startsWith(blockedPage) || u.startsWith(warnPage) || u.startsWith(educatePage)) continue;
+        if (u.startsWith(blockedPage) || u.startsWith(warnPage)) continue;
 
         const host = new URL(u).hostname.replace(/^www\./i, "").toLowerCase();
 
@@ -131,14 +161,11 @@ async function _redirectOpenBlockedTabs(blockedDomains, mode) {
           (d) => host === d || host.endsWith("." + d),
         );
         if (match) {
-          let targetPage;
-          if (policyMode === "WARN") {
-            targetPage = `${warnPage}?url=${encodeURIComponent(u)}&domain=${encodeURIComponent(host)}`;
-          } else if (policyMode === "EDUCATE") {
-            targetPage = `${educatePage}?url=${encodeURIComponent(u)}&domain=${encodeURIComponent(host)}`;
-          } else {
-            targetPage = `${blockedPage}?url=${encodeURIComponent(u)}`;
-          }
+          // EDUCATE já retornou acima — aqui o modo é BLOCK ou WARN
+          const targetPage =
+            policyMode === "WARN"
+              ? `${warnPage}?domain=${encodeURIComponent(host)}&url=${encodeURIComponent(u)}`
+              : `${blockedPage}?domain=${encodeURIComponent(host)}&url=${encodeURIComponent(u)}`;
           console.log("[Guardian] Redirecionando aba aberta:", host, "→", policyMode);
           await chrome.tabs.update(tab.id, { url: targetPage });
         }
@@ -198,6 +225,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
         s.blocklistDomains || [],
         s.protectionEnabled !== false,
         s.allowlistDomains || [],
+        _modoLocal(s),
       );
     }
 
@@ -386,19 +414,19 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
             const resultado = await resp.json();
             console.log("[Guardian] SPA classificação:", url, "→", resultado.acao, resultado.motivo);
 
+            // EDUCATE não interfere: o evento já foi enfileirado acima e o
+            // responsável verá o acesso nas Atividades e nos alertas.
             const acao = resultado.acao;
-            if (acao === "BLOCK" || acao === "WARN" || acao === "EDUCATE") {
+            if (acao === "BLOCK" || acao === "WARN") {
               const h2 = u.hostname.replace(/^www\./i, "").toLowerCase();
-              let targetPage;
-              if (acao === "WARN") {
-                targetPage = chrome.runtime.getURL(`src/warned/warn.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h2)}`);
-              } else if (acao === "EDUCATE") {
-                targetPage = chrome.runtime.getURL(`src/educate/educate.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h2)}`);
-              } else {
-                targetPage = chrome.runtime.getURL(`src/blocked/blocked.html?url=${encodeURIComponent(url)}`);
-              }
+              const targetPage =
+                acao === "WARN"
+                  ? chrome.runtime.getURL(`src/warned/warn.html?domain=${encodeURIComponent(h2)}&url=${encodeURIComponent(url)}`)
+                  : chrome.runtime.getURL(`src/blocked/blocked.html?domain=${encodeURIComponent(h2)}&url=${encodeURIComponent(url)}`);
               await chrome.tabs.update(details.tabId, { url: targetPage });
-              console.log("[Guardian] SPA bloqueio imediato:", url, "→", acao);
+              console.log("[Guardian] SPA intercepção imediata:", url, "→", acao);
+            } else if (acao === "EDUCATE") {
+              console.log("[Guardian] SPA modo EDUCATE — apenas registrado:", url);
             }
           }
         } catch (e) {
@@ -433,7 +461,7 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
 
 /**
  * Verifica se a URL está na blocklist local e redireciona conforme o modo de proteção.
- * BLOCK → blocked.html | WARN → warn.html (bypassável) | EDUCATE → educate.html
+ * BLOCK → blocked.html | WARN → warn.html (bypassável) | EDUCATE → não interfere
  * Funciona para SPAs e para páginas que o DNR ainda não interceptou.
  */
 async function _verificarEBloquearUrl(url, hostname, tabId) {
@@ -446,9 +474,12 @@ async function _verificarEBloquearUrl(url, hostname, tabId) {
     const urlLower = url.toLowerCase();
     const mode = policy.mode || "BLOCK";
 
+    // EDUCATE apenas registra — o evento já foi enfileirado pelo chamador
+    if (!INTERCEPTA_CONTEUDO(mode)) return;
+
     const h = hostname.replace(/^www\./i, "").toLowerCase();
 
-    // Verifica bypass de sessão (usuário optou por continuar em WARN/EDUCATE)
+    // Verifica bypass de sessão (usuário optou por continuar em WARN)
     if (warnBypassSet.has(h)) return;
 
     const match = blocked.find((entry) => {
@@ -461,23 +492,16 @@ async function _verificarEBloquearUrl(url, hostname, tabId) {
     });
 
     if (match) {
-      let targetPage;
-      if (mode === "WARN") {
-        targetPage = chrome.runtime.getURL(
-          `src/warned/warn.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h)}`,
-        );
-        console.log("[Guardian] Aviso WARN:", url, "→", match);
-      } else if (mode === "EDUCATE") {
-        targetPage = chrome.runtime.getURL(
-          `src/educate/educate.html?url=${encodeURIComponent(url)}&domain=${encodeURIComponent(h)}`,
-        );
-        console.log("[Guardian] Aviso EDUCATE:", url, "→", match);
-      } else {
-        targetPage = chrome.runtime.getURL(
-          `src/blocked/blocked.html?url=${encodeURIComponent(url)}`,
-        );
-        console.log("[Guardian] Bloqueio BLOCK:", url, "→", match);
-      }
+      // EDUCATE já retornou acima — aqui o modo é BLOCK ou WARN
+      const targetPage =
+        mode === "WARN"
+          ? chrome.runtime.getURL(
+              `src/warned/warn.html?domain=${encodeURIComponent(h)}&url=${encodeURIComponent(url)}`,
+            )
+          : chrome.runtime.getURL(
+              `src/blocked/blocked.html?domain=${encodeURIComponent(h)}&url=${encodeURIComponent(url)}`,
+            );
+      console.log(`[Guardian] Intercepção ${mode}:`, url, "→", match);
       await chrome.tabs.update(tabId, { url: targetPage });
     }
   } catch (e) {
@@ -512,6 +536,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const domain = (msg.domain || "").replace(/^www\./i, "").toLowerCase();
         if (domain) {
           warnBypassSet.add(domain);
+          // Libera também no DNR: sem isso a regra de redirect dispararia
+          // novamente ao voltar para a URL, prendendo o usuário num laço.
+          await adicionarBypassDNR(domain);
           console.log("[Guardian] Bypass de sessão concedido para:", domain);
         }
         // Navega de volta para a URL original no tab do remetente
@@ -528,6 +555,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           s.blocklistDomains || [],
           s.protectionEnabled !== false,
           s.allowlistDomains || [],
+          _modoLocal(s),
         );
         sendResponse({ ok: true });
         return;
@@ -734,14 +762,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           const policy = await syncPolicy();
 
           if (policy) {
-            // Se veio do backend, atualiza DNR com blocklist do backend
-            if (policy.fromBackend) {
-              await syncBlocklistToDNR(
-                policy.blockedDomains || [],
-                policy.protectionEnabled !== false,
-                policy.allowedDomains || [],
-              );
-            }
+            // O DNR já foi aplicado por syncPolicy() com os domínios corretos
+            // para o modo vigente. Reaplicar aqui com policy.blockedDomains
+            // (backend + S3) desfaria a exclusão feita para WARN/EDUCATE.
             sendResponse({ ok: true, policy });
           } else {
             sendResponse({ ok: false, error: "Não foi possível sincronizar" });
@@ -833,22 +856,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const resultado = await resp.json();
             console.log("[Guardian] ClassificarAgora:", pageUrl, "→", resultado.acao, resultado.motivo);
 
+            // EDUCATE não interfere — o acesso fica registrado, mas a página
+            // do usuário não é substituída.
             const acao = resultado.acao;
-            if (acao === "BLOCK" || acao === "WARN" || acao === "EDUCATE") {
+            if (acao === "BLOCK" || acao === "WARN") {
               const tabId = sender.tab?.id;
               if (tabId) {
                 const host = new URL(pageUrl).hostname.replace(/^www\./i, "").toLowerCase();
-                let targetPage;
-                if (acao === "WARN") {
-                  targetPage = chrome.runtime.getURL(`src/warned/warn.html?url=${encodeURIComponent(pageUrl)}&domain=${encodeURIComponent(host)}`);
-                } else if (acao === "EDUCATE") {
-                  targetPage = chrome.runtime.getURL(`src/educate/educate.html?url=${encodeURIComponent(pageUrl)}&domain=${encodeURIComponent(host)}`);
-                } else {
-                  targetPage = chrome.runtime.getURL(`src/blocked/blocked.html?url=${encodeURIComponent(pageUrl)}`);
-                }
+                const targetPage =
+                  acao === "WARN"
+                    ? chrome.runtime.getURL(`src/warned/warn.html?domain=${encodeURIComponent(host)}&url=${encodeURIComponent(pageUrl)}`)
+                    : chrome.runtime.getURL(`src/blocked/blocked.html?domain=${encodeURIComponent(host)}&url=${encodeURIComponent(pageUrl)}`);
                 await chrome.tabs.update(tabId, { url: targetPage });
-                console.log("[Guardian] Bloqueio imediato por IA:", pageUrl, "→", acao);
+                console.log("[Guardian] Intercepção imediata por IA:", pageUrl, "→", acao);
               }
+            } else if (acao === "EDUCATE") {
+              console.log("[Guardian] Modo EDUCATE — apenas registrado:", pageUrl);
             }
           }
         } catch (e) {
