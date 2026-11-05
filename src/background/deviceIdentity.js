@@ -20,19 +20,21 @@ export async function ensureDeviceId() {
  * @param {string} baseUrl - URL do backend
  * @returns {Promise<{deviceId: string, dependentNickname: string}>}
  */
-export async function enrollWithCode(code, deviceName, baseUrl) {
-  const result = await apiEnroll(code, deviceName, baseUrl);
+export async function enrollWithCode(code, deviceName, baseUrl, token) {
+  const result = await apiEnroll(code, deviceName, baseUrl, token);
+  if (!result.id || !result.tokenDispositivo) {
+    throw new Error("O servidor não retornou a autorização do dispositivo.");
+  }
   const enrolledAt = result.vinculadoEm || new Date().toISOString();
 
-  // Salva o deviceId retornado pelo backend
-  await chrome.storage.local.set({ deviceId: result.id });
+  await chrome.storage.local.set({ deviceId: result.id, deviceToken: result.tokenDispositivo });
 
   // Salva dados de enrollment no sync storage
   await chrome.storage.sync.set({
     deviceId: result.id,
     deviceName: result.nomeDispositivo || deviceName,
     enrolledAt,
-    dependentNickname: "",
+    dependentNickname: result.apelidoDependente || "",
     // Habilita upload de eventos após enrollment
     uploadEnabled: true,
     backendUrl: baseUrl,
@@ -40,7 +42,7 @@ export async function enrollWithCode(code, deviceName, baseUrl) {
 
   return {
     deviceId: result.id,
-    dependentNickname: "",
+    dependentNickname: result.apelidoDependente || "",
   };
 }
 
@@ -48,15 +50,15 @@ export async function enrollWithCode(code, deviceName, baseUrl) {
  * Verifica se o dispositivo está vinculado ao backend
  */
 export async function isEnrolled() {
-  const { enrolledAt } = await chrome.storage.sync.get(["enrolledAt"]);
-  return !!enrolledAt;
+  const info = await getEnrollmentInfo();
+  return info.isEnrolled;
 }
 
 /**
  * Remove vinculação (para re-vincular a outro dependente)
  */
 export async function clearEnrollment() {
-  await chrome.storage.local.remove(["deviceId"]);
+  await chrome.storage.local.remove(["deviceId", "deviceToken"]);
   await chrome.storage.sync.set({
     deviceId: "",
     deviceName: "",
@@ -75,12 +77,15 @@ export async function getEnrollmentInfo() {
     "enrolledAt",
     "dependentNickname",
   ]);
+  const local = await chrome.storage.local.get(["deviceId", "deviceToken"]);
+  const sameDevice = !!data.deviceId && local.deviceId === data.deviceId;
   return {
     deviceId: data.deviceId || "",
     deviceName: data.deviceName || "",
     enrolledAt: data.enrolledAt || null,
     dependentNickname: data.dependentNickname || "",
-    isEnrolled: !!data.enrolledAt,
+    isEnrolled: !!data.enrolledAt && sameDevice && !!local.deviceToken,
+    needsAuthorization: !!data.enrolledAt && sameDevice && !local.deviceToken,
   };
 }
 

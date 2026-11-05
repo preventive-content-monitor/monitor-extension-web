@@ -11,10 +11,9 @@ Extensão Chrome (Manifest V3) instalada no navegador do **dependente** (crianç
 | Manifest | V3 (Manifest Version 3) |
 | Plataforma | Google Chrome |
 | Modo de instalação | Desenvolvedor (`chrome://extensions` → "Carregar sem compactação") |
-| Backend auth/política | `http://<EC2-IP>` (Spring Boot via nginx) |
-| Envio de eventos | `https://2o9ybf5asf.execute-api.us-east-1.amazonaws.com/prod` (API Gateway) |
+| Backend e eventos | `https://<EC2-IP>` (Spring Boot via nginx) |
 
-> As URLs são geradas automaticamente pelo Terraform e gravadas em `src/shared/constants.js`. **Não edite `constants.js` diretamente** — edite o template `constants.js.tpl` e rode `terraform apply`.
+> O deploy do frontend ajusta `src/shared/constants.js` para o IP HTTPS publicado.
 
 ---
 
@@ -27,7 +26,7 @@ monitor-extension-web/
 └── src/
     ├── background/
     │   ├── serviceWorker.js        ← Service Worker principal (coordenação)
-    │   ├── apiClient.js            ← Funções de fetch (backend + API Gateway)
+    │   ├── apiClient.js            ← Chamadas autenticadas ao backend
     │   ├── deviceIdentity.js       ← Identidade do dispositivo e enrollment
     │   ├── eventQueue.js           ← Fila local de eventos (drena a cada 30s)
     │   ├── policyStore.js          ← Cache local da política (TTL 15s)
@@ -47,7 +46,7 @@ monitor-extension-web/
     ├── rules/
     │   └── rules.json              ← Regras DNR estáticas iniciais
     └── shared/
-        ├── constants.js            ← URLs e constantes (gerado pelo Terraform)
+        ├── constants.js            ← URLs e constantes do deploy
         ├── types.js                ← Tipos e estruturas de dados compartilhados
         └── utils.js                ← Utilitários compartilhados
 ```
@@ -66,16 +65,19 @@ monitor-extension-web/
 6. Insira o **código de vínculo** gerado no dashboard (válido 5 minutos)
 7. Clique em **Conectar**. A extensão associa este navegador ao dependente e mostra o nome em **Protegendo**.
 
-O popup reutiliza a tela e a lógica de autenticação/vinculação existentes. Antes
-do login, mostra apenas o acesso do responsável; depois, libera o campo do
-código. Ao fechar e reabrir, recupera a sessão e o vínculo armazenados pela
-extensão. Sair da conta não desconecta o dispositivo nem desativa a proteção.
+O login da extensão concede apenas uma autorização temporária para vincular,
+não uma sessão do painel. Depois do vínculo, a extensão descarta essa
+autorização e guarda somente uma credencial limitada ao próprio dispositivo.
 Um perfil do navegador protege um dependente por vez.
 
 A página completa de configuração continua disponível para compatibilidade e
-ajustes avançados, mas não é necessária para o fluxo normal. Depois de atualizar
-os arquivos da extensão instalada manualmente, clique em **Recarregar** em
-`chrome://extensions` ou `edge://extensions` para ativar o popup.
+ajustes avançados, mas não é necessária para o fluxo normal.
+
+**Atualização obrigatória de instalações antigas:** baixe o novo ZIP, extraia os
+arquivos na pasta da extensão já instalada e clique em **Recarregar** em
+`chrome://extensions` ou `edge://extensions`. Só então, abra o ícone e entre
+com a conta do responsável para reautorizar o dispositivo existente. Não crie
+um vínculo duplicado. Não digite sua senha na versão antiga, que usava HTTP.
 
 ### 2. Captura de Eventos
 
@@ -85,11 +87,13 @@ os arquivos da extensão instalada manualmente, clique em **Recarregar** em
 
 ### 3. Envio de Eventos (assíncrono)
 
-A cada ~30 segundos, `serviceWorker.js` drena a fila e envia para o **API Gateway**:
+A cada ~30 segundos, `serviceWorker.js` envia a fila ao backend e só remove os
+eventos após uma resposta bem-sucedida:
 
 ```
-POST https://2o9ybf5asf.execute-api.us-east-1.amazonaws.com/prod/events/batch
+POST https://<EC2-IP>/api/eventos/lote
 Content-Type: application/json
+Authorization: Bearer <credencial-do-dispositivo>
 
 {
   "dispositivoId": "<uuid>",
@@ -99,17 +103,16 @@ Content-Type: application/json
 }
 ```
 
-O API Gateway enfileira no SQS sem resposta síncrona. O processamento (classificação IA) ocorre de forma assíncrona na Lambda.
-
 ### 4. Sincronização de Política
 
 `policySync.js` consulta a política do dispositivo a cada 15 segundos:
 
 ```
-GET http://<EC2-IP>/api/politica/atual?dispositivoId=<uuid>
+GET https://<EC2-IP>/api/politica/atual?dispositivoId=<uuid>
+Authorization: Bearer <credencial-do-dispositivo>
 ```
 
-A política contém a lista de `dominios_bloqueados` atualizada pela Lambda.
+A política contém as regras do dependente vinculado.
 
 ### 5. Bloqueio de Sites (DNR)
 
@@ -126,8 +129,7 @@ Quando o bloqueio é ativado, o usuário é redirecionado para `blocked.html`.
 
 | Constante | Uso |
 |-----------|-----|
-| `API_BASE_URL` | Base para auth, política e enrollment → EC2 Spring Boot |
-| `EVENTS_API_URL` | Envio de eventos → API Gateway → SQS → Lambda |
+| `API_BASE_URL` | Base HTTPS para auth, política, vínculo e eventos |
 | `EVENT_TYPES` | `NAVIGATION`, `BLOCK_ATTEMPT`, `PERMISSION_REQUEST` |
 | `POLICY_MODES` | `BLOCK`, `WARN`, `EDUCATE` |
 | `RISK_THRESHOLDS` | `LOW=30`, `MEDIUM=50`, `HIGH=70`, `CRITICAL=90` |
@@ -144,7 +146,8 @@ Quando o bloqueio é ativado, o usuário é redirecionado para `blocked.html`.
 5. A extensão aparece na barra do Chrome
 ```
 
-> Após cada `terraform apply` que altere o IP da EC2, recarregue a extensão em `chrome://extensions` para que o novo `constants.js` seja aplicado.
+> Se o IP mudar, emita um certificado para o novo IP, publique novamente o
+> frontend e recarregue a extensão em `chrome://extensions`.
 
 ---
 
@@ -152,9 +155,5 @@ Quando o bloqueio é ativado, o usuário é redirecionado para `blocked.html`.
 
 | Recurso | Função |
 |---------|--------|
-| EC2 (Spring Boot + nginx) | Autenticação, enrollment, sincronização de política |
-| API Gateway (`guardian-api`) | Recebe batches de eventos da extensão |
-| SQS (`guardian-eventos`) | Fila assíncrona de eventos |
-| Lambda (`guardian-classificador`) | Classifica URLs com OpenAI gpt-4o-mini |
-| RDS MySQL | Persiste eventos, classificações e políticas |
-| SNS (`guardian-alertas`) | Notifica o responsável por e-mail |
+| EC2 pública (Spring Boot + nginx) | Autenticação, vínculo, eventos e políticas |
+| MySQL privado | Persiste contas, sessões, dispositivos, eventos e políticas |

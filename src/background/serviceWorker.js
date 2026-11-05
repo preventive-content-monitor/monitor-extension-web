@@ -2,19 +2,22 @@ import {
   ensureDefaults,
   isEnrolled,
   enrollWithCode,
+  clearEnrollment,
   getEnrollmentInfo,
   generateDeviceName,
 } from "./deviceIdentity.js";
 import { getSettings } from "./policyStore.js";
-import { enqueueEvent, drainQueue } from "./eventQueue.js";
+import { enqueueEvent, readQueue, acknowledgeEvents } from "./eventQueue.js";
 import {
   postEventsBatch,
   fetchPolicy,
-  updatePolicy,
+  authenticatedDeviceFetch,
   loginUser,
+  logoutUser,
+  authorizeExistingDevice,
   registerUser,
 } from "./apiClient.js";
-import { EVENT_TYPES, API_BASE_URL, EVENTS_API_URL } from "../shared/constants.js";
+import { EVENT_TYPES, API_BASE_URL } from "../shared/constants.js";
 import {
   syncBlocklistToDNR,
   adicionarBypassDNR,
@@ -25,6 +28,7 @@ import { syncPolicy, invalidatePolicyCache } from "./policySync.js";
 import { refreshS3Blocklist, getS3Blacklist } from "./blocklistSync.js";
 
 let uploadTimer = null;
+let uploadPromise = null;
 let policySyncTimer = null;
 let s3RefreshTimer = null;
 
@@ -37,6 +41,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // evita reaproveitar um backendUrl antigo salvo no storage sincronizado.
     if (details?.reason === "install" || details?.reason === "update") {
       await chrome.storage.sync.set({ backendUrl: API_BASE_URL });
+      await chrome.storage.local.remove(["authToken", "authEmail", "authAt"]);
+      await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
     }
     await ensureDefaults();
     await refreshGuardianSiteTabs();
@@ -242,6 +248,18 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   }
 });
 
+async function uploadQueued(settings, max) {
+  if (uploadPromise) return await uploadPromise;
+  uploadPromise = (async () => {
+    if (!settings.deviceId || !(await isEnrolled())) return;
+    const batch = await readQueue(max);
+    if (!batch.length) return;
+    await postEventsBatch(settings.deviceId, batch, settings.backendUrl || API_BASE_URL);
+    await acknowledgeEvents(batch.length);
+  })().finally(() => { uploadPromise = null; });
+  return await uploadPromise;
+}
+
 async function startUploadLoop() {
   const s = await getSettings();
 
@@ -263,16 +281,12 @@ async function startUploadLoop() {
     "[Guardian] Upload habilitado, iniciando loop para deviceId:",
     s.deviceId,
     "events api:",
-    EVENTS_API_URL,
+    s.backendUrl || API_BASE_URL,
   );
 
   // Faz upload imediato se tiver eventos pendentes
   try {
-    const batch = await drainQueue(200);
-    if (batch.length > 0) {
-      console.log("[Guardian] Enviando", batch.length, "eventos pendentes");
-      await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
-    }
+    await uploadQueued(s, 200);
   } catch (e) {
     console.warn("[Guardian] Upload inicial falhou:", e?.message || e);
   }
@@ -288,19 +302,7 @@ async function startUploadLoop() {
           return;
         }
 
-        const batch = await drainQueue(200);
-        if (batch.length === 0) return;
-        console.log(
-          "[Guardian] Enviando",
-          batch.length,
-          "eventos para",
-          EVENTS_API_URL,
-        );
-        await postEventsBatch(
-          currentSettings.deviceId,
-          batch,
-          EVENTS_API_URL,
-        );
+        await uploadQueued(currentSettings, 200);
       } catch (e) {
         console.warn("[Guardian] Upload failed:", e?.message || e);
       }
@@ -410,12 +412,11 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async (details) => {
         // Classifica via backend e bloqueia se necessário
         const baseUrl = s.backendUrl || API_BASE_URL;
         try {
-          const resp = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/blocklist/classificar-agora`, {
+          const resp = await authenticatedDeviceFetch("/api/blocklist/classificar-agora", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, titulo, dispositivoId: s.deviceId }),
-            // Contexto adicional será enriquecido via CLASSIFICAR_AGORA do content script
-          });
+          }, baseUrl);
           if (resp.ok) {
             const resultado = await resp.json();
             console.log("[Guardian] SPA classificação:", url, "→", resultado.acao, resultado.motivo);
@@ -522,12 +523,9 @@ async function _uploadImediato(s) {
   const enrolled = await isEnrolled();
   if (!enrolled || !s?.deviceId) return;
   try {
-    const batch = await drainQueue(50);
-    if (batch.length > 0) {
-      await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
-    }
+    await uploadQueued(s, 50);
   } catch (e) {
-    // silencia — o timer de 10s tentará novamente
+    console.warn("[Guardian] Upload imediato falhou:", e?.message || e);
   }
 }
 
@@ -539,27 +537,35 @@ function getOrigin(url) {
   }
 }
 
-async function enrollThisBrowser(code, deviceName) {
+async function initializeEnrolledMonitoring() {
+  try {
+    await startUploadLoop();
+    await startPolicySyncLoop();
+    const enrolledPolicy = await syncPolicy();
+    if (!enrolledPolicy || !enrolledPolicy.fromBackend) {
+      throw new Error("Não foi possível obter a política do servidor.");
+    }
+    const s3Blocked = await getS3Blacklist();
+    const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
+    await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
+    return null;
+  } catch (error) {
+    console.error("[Guardian] Vínculo salvo, mas a proteção não foi sincronizada:", error);
+    return "O vínculo foi salvo, mas a proteção não pôde ser sincronizada. Verifique a conexão e recarregue a extensão.";
+  }
+}
+
+async function enrollThisBrowser(code, deviceName, token) {
   const s = await getSettings();
   const baseUrl = s.backendUrl || API_BASE_URL;
   const result = await enrollWithCode(
     code,
     deviceName || generateDeviceName(),
     baseUrl,
+    token,
   );
-
-  // Reinicia loops de upload e sync após enrollment
-  await startUploadLoop();
-  await startPolicySyncLoop();
-
-  // Sincroniza política imediatamente e redireciona abas já abertas
-  const enrolledPolicy = await syncPolicy();
-  if (enrolledPolicy) {
-    const s3Blocked = await getS3Blacklist();
-    const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
-    await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
-  }
-  return result;
+  const warning = await initializeEnrolledMonitoring();
+  return { ...result, warning };
 }
 
 // Abas do site abertas antes da instalação não recebem o content script;
@@ -624,9 +630,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Enrollment - vincula dispositivo via código
       if (msg?.type === "ENROLL_DEVICE") {
         try {
-          const result = await enrollThisBrowser(msg.code, msg.deviceName);
+          const auth = await chrome.storage.session.get(["linkToken"]);
+          if (!auth.linkToken) throw new Error("A autorização temporária expirou. Entre novamente.");
+          const result = await enrollThisBrowser(msg.code, msg.deviceName, auth.linkToken);
+          await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
           sendResponse({ ok: true, ...result });
         } catch (e) {
+          if (e?.message?.includes("autorização temporária expirou")) {
+            await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
+          }
           sendResponse({ ok: false, error: e?.message || String(e) });
         }
         return;
@@ -647,7 +659,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             trusted: true,
             installed: true,
             version: chrome.runtime.getManifest().version,
+            scopedEnrollment: true,
             enrolled: info.isEnrolled,
+            requiresAuthorization: info.needsAuthorization,
             deviceId: info.deviceId || null,
           });
           return;
@@ -660,7 +674,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             return;
           }
           try {
-            const result = await enrollThisBrowser(code);
+            const result = await enrollThisBrowser(code, null, msg.token);
             sendResponse({ trusted: true, ok: true, ...result });
           } catch (e) {
             sendResponse({
@@ -685,9 +699,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Obter status de conexão do dispositivo
       if (msg?.type === "GET_CONNECTION_STATUS") {
-        const enrolled = await isEnrolled();
-        if (enrolled) {
-          const info = await getEnrollmentInfo();
+        const info = await getEnrollmentInfo();
+        if (info.isEnrolled) {
           const { cachedPolicy } = await chrome.storage.local.get([
             "cachedPolicy",
           ]);
@@ -718,7 +731,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             enrolledAt: s.enrolledAt,
           });
         } else {
-          sendResponse({ ok: true, enrolled: false });
+          sendResponse({ ok: true, enrolled: false, requiresAuthorization: info.needsAuthorization });
         }
         return;
       }
@@ -777,12 +790,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Desconectar dispositivo
       if (msg?.type === "DISCONNECT_DEVICE") {
-        await chrome.storage.sync.remove([
-          "deviceId",
-          "enrolledAt",
-          "dependentId",
-          "dependentNickname",
-        ]);
+        const { deviceToken } = await chrome.storage.local.get(["deviceToken"]);
+        await logoutUser(deviceToken, s.backendUrl || API_BASE_URL);
+        await clearEnrollment();
         await chrome.storage.local.remove(["cachedPolicy"]);
         await syncBlocklistToDNR([], false, []); // Limpa DNR
         sendResponse({ ok: true });
@@ -794,15 +804,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
           const baseUrl = s.backendUrl || API_BASE_URL;
           const result = await loginUser(msg.email, msg.password, baseUrl);
-
-          // Salva o token no storage
-          await chrome.storage.local.set({
-            authToken: result.token,
-            authEmail: msg.email,
-            authAt: Date.now(),
-          });
-
-          sendResponse({ ok: true, token: result.token });
+          if (!result.token) throw new Error("O servidor não retornou uma autorização de vínculo.");
+          const info = await getEnrollmentInfo();
+          if (info.needsAuthorization) {
+            try {
+              const authorization = await authorizeExistingDevice(info.deviceId, result.token, baseUrl);
+              if (!authorization.token) throw new Error("O servidor não retornou a autorização do dispositivo.");
+              await chrome.storage.local.set({ deviceToken: authorization.token });
+              await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
+            } catch (error) {
+              try { await logoutUser(result.token, baseUrl); }
+              catch (logoutError) {
+                throw new Error("Não foi possível atualizar o vínculo nem encerrar a autorização temporária.");
+              }
+              throw error;
+            }
+            const warning = await initializeEnrolledMonitoring();
+            sendResponse({ ok: true, migrated: true, warning });
+          } else {
+            await chrome.storage.session.set({
+              linkToken: result.token,
+              authEmail: msg.email,
+              authAt: Date.now(),
+            });
+            sendResponse({ ok: true });
+          }
         } catch (e) {
           sendResponse({ ok: false, error: e?.message || String(e) });
         }
@@ -823,21 +849,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Logout
       if (msg?.type === "LOGOUT") {
-        await chrome.storage.local.remove(["authToken", "authEmail", "authAt"]);
-        sendResponse({ ok: true });
+        const auth = await chrome.storage.session.get(["linkToken"]);
+        try {
+          await logoutUser(auth.linkToken, s.backendUrl || API_BASE_URL);
+          sendResponse({ ok: true });
+        } catch (error) {
+          sendResponse({ ok: false, error: error?.message || String(error) });
+        } finally {
+          await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
+          await chrome.storage.local.remove(["authToken", "authEmail", "authAt"]);
+        }
         return;
       }
 
       // Verificar se está logado
       if (msg?.type === "GET_AUTH_STATUS") {
-        const auth = await chrome.storage.local.get([
-          "authToken",
+        const auth = await chrome.storage.session.get([
+          "linkToken",
           "authEmail",
           "authAt",
         ]);
+        if (auth.linkToken && (!auth.authAt || Date.now() - auth.authAt >= 10 * 60 * 1000)) {
+          await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
+          sendResponse({ ok: true, isLoggedIn: false, email: null });
+          return;
+        }
         sendResponse({
           ok: true,
-          isLoggedIn: !!auth.authToken,
+          isLoggedIn: !!auth.linkToken,
           email: auth.authEmail || null,
           authAt: auth.authAt || null,
         });
@@ -878,42 +917,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       // Atualizar política no backend (PUT)
       if (msg?.type === "UPDATE_POLICY") {
-        if (!s.deviceId || !s.enrolledAt) {
-          sendResponse({ ok: false, error: "Dispositivo não conectado" });
-          return;
-        }
-
-        // Busca token do storage
-        const auth = await chrome.storage.local.get(["authToken"]);
-        if (!auth.authToken) {
-          sendResponse({
-            ok: false,
-            error: "Faça login para sincronizar configurações",
-          });
-          return;
-        }
-
-        try {
-          const baseUrl = s.backendUrl || API_BASE_URL;
-          const result = await updatePolicy(
-            s.deviceId,
-            msg.policy,
-            auth.authToken,
-            baseUrl,
-          );
-          await invalidatePolicyCache(); // Força re-sync
-          sendResponse({ ok: true, result });
-        } catch (e) {
-          // Se token expirou, limpa auth
-          if (e?.message?.includes("401") || e?.message?.includes("expirada")) {
-            await chrome.storage.local.remove([
-              "authToken",
-              "authEmail",
-              "authAt",
-            ]);
-          }
-          sendResponse({ ok: false, error: e?.message || String(e) });
-        }
+        sendResponse({ ok: false, error: "Altere a política no painel do responsável." });
         return;
       }
 
@@ -928,7 +932,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         const baseUrl = currentSettings.backendUrl || API_BASE_URL;
         try {
-          const resp = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/blocklist/classificar-agora`, {
+          const resp = await authenticatedDeviceFetch("/api/blocklist/classificar-agora", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -939,7 +943,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               categoria: msg.categoria || "",
               dispositivoId: deviceId,
             }),
-          });
+          }, baseUrl);
 
           if (resp.ok) {
             const resultado = await resp.json();
@@ -1050,14 +1054,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         if (enrolled && s.deviceId) {
           try {
-            const batch = await drainQueue(10);
-            if (batch.length > 0) {
-              console.log(
-                "[Guardian] Enviando evento de bloqueio imediatamente para deviceId:",
-                s.deviceId,
-              );
-              await postEventsBatch(s.deviceId, batch, EVENTS_API_URL);
-            }
+            await uploadQueued(s, 10);
           } catch (e) {
             console.warn("[Guardian] Upload imediato falhou:", e?.message || e);
           }

@@ -29,7 +29,7 @@
     }
 
     if (msg.type === "ENROLL") {
-      const res = await ask("ENROLL", { code: msg.code });
+      const res = await ask("ENROLL", { code: msg.code, token: msg.token });
       if (res?.trusted) post({ type: "ENROLL_RESULT", requestId: msg.requestId, result: res });
     }
   });

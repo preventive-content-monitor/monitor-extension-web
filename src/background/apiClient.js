@@ -1,7 +1,14 @@
 import { API_BASE_URL } from "../shared/constants.js";
 
 function buildUrl(baseUrl, path) {
-  return `${(baseUrl || API_BASE_URL).replace(/\/+$/, "")}${path}`;
+  const base = new URL(baseUrl || API_BASE_URL);
+  if (
+    base.protocol !== "https:" &&
+    !(base.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))
+  ) {
+    throw new Error("O servidor deve usar HTTPS.");
+  }
+  return `${base.toString().replace(/\/+$/, "")}${path}`;
 }
 
 function extractApiErrorMessage(payload, fallback) {
@@ -16,12 +23,10 @@ async function readErrorPayload(res) {
 
 /**
  * Autentica usuário e retorna JWT
- * POST /api/autenticacao/entrar
+ * POST /api/autenticacao/entrar-vinculo
  */
 export async function loginUser(email, password, baseUrl) {
-  const url = buildUrl(baseUrl, "/api/autenticacao/entrar");
-
-  console.log("[Guardian] Logging in:", email);
+  const url = buildUrl(baseUrl, "/api/autenticacao/entrar-vinculo");
 
   const res = await fetch(url, {
     method: "POST",
@@ -37,7 +42,81 @@ export async function loginUser(email, password, baseUrl) {
     throw new Error(errorMessage);
   }
 
-  return await res.json(); // { token: "..." }
+  return await res.json();
+}
+
+export async function logoutUser(token, baseUrl) {
+  if (!token) return;
+  const res = await fetch(buildUrl(baseUrl, "/api/autenticacao/sair"), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 401) {
+    throw new Error("Não foi possível encerrar a autorização temporária.");
+  }
+}
+
+export async function authorizeExistingDevice(deviceId, token, baseUrl) {
+  const res = await fetch(buildUrl(baseUrl, `/api/dispositivos/${encodeURIComponent(deviceId)}/credencial`), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(await readErrorPayload(res));
+  return await res.json();
+}
+
+let renewalPromise = null;
+
+function tokenExpiration(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(payload));
+    if (!Number.isFinite(claims.exp)) throw new Error("expiração ausente");
+    return claims.exp * 1000;
+  } catch (error) {
+    throw new Error("A autorização do dispositivo é inválida. Entre novamente para atualizá-la.");
+  }
+}
+
+async function getDeviceToken(baseUrl) {
+  const { deviceToken } = await chrome.storage.local.get(["deviceToken"]);
+  if (!deviceToken) throw new Error("Entre na extensão para autorizar este dispositivo.");
+  const expiration = tokenExpiration(deviceToken);
+  if (expiration <= Date.now()) {
+    await chrome.storage.local.remove(["deviceToken"]);
+    throw new Error("A autorização do dispositivo expirou. Entre novamente na extensão.");
+  }
+  if (expiration - Date.now() > 30 * 24 * 60 * 60 * 1000) return deviceToken;
+  if (!renewalPromise) {
+    renewalPromise = (async () => {
+      const res = await fetch(buildUrl(baseUrl, "/api/dispositivos/renovar-credencial"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${deviceToken}` },
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) await chrome.storage.local.remove(["deviceToken"]);
+        throw new Error("Não foi possível renovar a autorização do dispositivo.");
+      }
+      const data = await res.json();
+      if (!data.token) throw new Error("O servidor não retornou a nova autorização do dispositivo.");
+      await chrome.storage.local.set({ deviceToken: data.token });
+      return data.token;
+    })().finally(() => { renewalPromise = null; });
+  }
+  return await renewalPromise;
+}
+
+export async function authenticatedDeviceFetch(path, options, baseUrl) {
+  const token = await getDeviceToken(baseUrl);
+  const res = await fetch(buildUrl(baseUrl, path), {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) {
+    await chrome.storage.local.remove(["deviceToken"]);
+    throw new Error("A autorização do dispositivo não é mais válida. Entre novamente na extensão.");
+  }
+  return res;
 }
 
 /**
@@ -71,8 +150,6 @@ export async function registerUser(email, password, baseUrl) {
  * POST /api/eventos/lote
  */
 export async function postEventsBatch(deviceId, events, baseUrl) {
-  const url = buildUrl(baseUrl, "/api/eventos/lote");
-
   const toBackendEventType = (eventType) => {
     if (eventType === "BLOCK_ATTEMPT") return "BLOCK_ATTEMPT";
     if (eventType === "PERMISSION_REQUEST") return "PERMISSION_REQUEST";
@@ -90,11 +167,11 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
     })),
   };
 
-  const res = await fetch(url, {
+  const res = await authenticatedDeviceFetch("/api/eventos/lote", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
-  });
+  }, baseUrl);
 
   if (!res.ok) {
     const errorMessage = await readErrorPayload(res);
@@ -110,18 +187,18 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
  * Vincula dispositivo usando código de enrollment
  * POST /api/dispositivos/vincular
  */
-export async function enrollDevice(code, deviceName, baseUrl) {
+export async function enrollDevice(code, deviceName, baseUrl, token) {
   const url = buildUrl(baseUrl, "/api/dispositivos/vincular");
-
-  console.log("[Guardian] Enrolling device:", { code, deviceName, url });
+  if (!token) throw new Error("Confirme a conta do responsável antes de vincular.");
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ codigo: code, nomeDispositivo: deviceName }),
   });
 
   if (!res.ok) {
+    if (res.status === 401) throw new Error("A autorização temporária expirou. Entre novamente.");
     const errorMessage = await readErrorPayload(res);
     throw new Error(errorMessage || `Enrollment failed: ${res.status}`);
   }
@@ -132,22 +209,15 @@ export async function enrollDevice(code, deviceName, baseUrl) {
 /**
  * Busca política atual para o dispositivo
  * GET /api/politica/atual?dispositivoId=...
- * Endpoint público (sem autenticação)
+ * Requer a credencial limitada do dispositivo.
  */
 export async function fetchPolicy(deviceId, baseUrl) {
-  const url = buildUrl(
-    baseUrl,
-    `/api/politica/atual?dispositivoId=${encodeURIComponent(deviceId)}`,
-  );
-
-  console.log("[Guardian] Fetching policy:", url);
-
-  const res = await fetch(url, {
+  const res = await authenticatedDeviceFetch(`/api/politica/atual?dispositivoId=${encodeURIComponent(deviceId)}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
     },
-  });
+  }, baseUrl);
 
   if (!res.ok) {
     const errorMessage = await readErrorPayload(res);

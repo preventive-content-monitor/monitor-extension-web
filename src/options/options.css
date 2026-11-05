@@ -65,7 +65,13 @@ body {
   line-height: 1.45;
 }
 
-body:not(.logged-in) .card:not(#authCard) {
+body:not(.logged-in):not(.is-enrolled) .card:not(#authCard) {
+  display: none !important;
+}
+
+body.is-enrolled:not(.logged-in) #authCard,
+body.is-enrolled:not(.logged-in) #disconnectBtn,
+body.logged-in #manageConnectionBtn {
   display: none !important;
 }
 

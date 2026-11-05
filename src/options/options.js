@@ -84,12 +84,17 @@ async function handleLogin() {
     });
 
     if (response?.ok) {
-      authState = { isLoggedIn: true, email };
       $("#loginPassword").value = "";
-      updateAuthUI();
-      showToast("Login realizado com sucesso!", "success");
+      if (response.migrated) {
+        await loadAuthStatus();
+        showToast(response.warning || "Vínculo atualizado com segurança!", response.warning ? "error" : "success");
+      } else {
+        authState = { isLoggedIn: true, email };
+        updateAuthUI();
+        showToast("Autorização temporária concedida.", "success");
+      }
       await loadConnectionStatus();
-      $("#connectionCode").focus();
+      if (!response.migrated) $("#connectionCode").focus();
     } else {
       errorEl.textContent = response?.error || "Erro ao fazer login";
     }
@@ -165,6 +170,7 @@ async function handleLogout() {
   } catch (e) {
     console.error("Logout failed:", e);
     showToast(e.message || "Não foi possível sair da conta.", "error");
+    await loadAuthStatus();
   }
 }
 
@@ -176,6 +182,7 @@ async function loadConnectionStatus() {
     });
     if (!response?.ok) throw new Error(response?.error || "Não foi possível consultar o vínculo.");
     $("#connectionError").textContent = "";
+    document.body.classList.toggle("is-enrolled", !!response.enrolled);
 
     if (response?.enrolled) {
       $("#notConnected").style.display = "none";
@@ -192,6 +199,9 @@ async function loadConnectionStatus() {
     } else {
       $("#notConnected").style.display = "block";
       $("#connected").style.display = "none";
+      if (response.requiresAuthorization) {
+        $("#loginError").textContent = "Para atualizar a proteção, entre com a conta do responsável. O vínculo existente será mantido.";
+      }
       updateStatusBadge(false);
     }
   } catch (e) {
@@ -229,12 +239,17 @@ async function handleConnect() {
     });
 
     if (response?.ok) {
-      showToast("Dispositivo conectado!", "success");
+      showToast(response.warning || "Dispositivo conectado!", response.warning ? "error" : "success");
       $("#connectionCode").value = "";
+      await loadAuthStatus();
       await loadConnectionStatus();
       if (!isPopup) await loadPolicyStatus();
     } else {
       errorEl.textContent = response?.error || "Código inválido ou expirado";
+      if (response?.error?.includes("autorização temporária expirou")) {
+        await loadAuthStatus();
+        $("#loginError").textContent = response.error;
+      }
     }
   } catch (e) {
     errorEl.textContent = "Erro de conexão";
@@ -254,12 +269,13 @@ async function handleDisconnect() {
   if (!confirmed) return;
 
   try {
-    await chrome.runtime.sendMessage({ type: "DISCONNECT_DEVICE" });
+    const response = await chrome.runtime.sendMessage({ type: "DISCONNECT_DEVICE" });
+    if (!response?.ok) throw new Error(response?.error || "Não foi possível desconectar.");
     showToast("Dispositivo desconectado", "info");
     await loadConnectionStatus();
     await loadPolicyStatus();
   } catch (e) {
-    showToast("Erro ao desconectar", "error");
+    showToast(e.message || "Erro ao desconectar", "error");
   }
 }
 
@@ -352,13 +368,17 @@ async function loadServerSettings() {
 
 async function handleSaveServer() {
   const backendUrl = $("#backendUrl").value.trim();
-
-  await chrome.storage.sync.set({
-    backendUrl: backendUrl || API_BASE_URL,
-    uploadEnabled: true,
-  });
-
-  showToast("Configurações salvas!", "success");
+  try {
+    const url = new URL(backendUrl || API_BASE_URL);
+    if (url.protocol !== "https:" &&
+        !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
+      throw new Error("O servidor deve usar HTTPS.");
+    }
+    await chrome.storage.sync.set({ backendUrl: url.origin, uploadEnabled: true });
+    showToast("Configurações salvas!", "success");
+  } catch (error) {
+    showToast(error.message || "Endereço de servidor inválido.", "error");
+  }
 }
 
 async function handleTestBackend() {
@@ -415,6 +435,10 @@ function setupEventListeners() {
   // Connection
   $("#connectBtn").addEventListener("click", handleConnect);
   $("#disconnectBtn").addEventListener("click", handleDisconnect);
+  $("#manageConnectionBtn").addEventListener("click", () => {
+    document.body.classList.remove("is-enrolled");
+    $("#loginEmail").focus();
+  });
 
   // Sync Now button
   $("#syncNowBtn")?.addEventListener("click", handleSyncNow);

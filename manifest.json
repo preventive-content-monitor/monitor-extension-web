@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Guardian - Proteção Familiar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Proteção digital para crianças e adolescentes. Monitora e filtra conteúdo impróprio.",
   "action": {
     "default_title": "Guardian",
