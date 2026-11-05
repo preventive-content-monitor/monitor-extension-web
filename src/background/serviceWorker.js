@@ -31,9 +31,15 @@ let s3RefreshTimer = null;
 // Domínios que o usuário optou por continuar acessando na sessão atual (WARN/EDUCATE bypass)
 const warnBypassSet = new Set();
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async (details) => {
   try {
+    // Cada pacote publicado já sai com o endereço do servidor correto;
+    // evita reaproveitar um backendUrl antigo salvo no storage sincronizado.
+    if (details?.reason === "install" || details?.reason === "update") {
+      await chrome.storage.sync.set({ backendUrl: API_BASE_URL });
+    }
     await ensureDefaults();
+    await refreshGuardianSiteTabs();
 
     // Se já está enrolled, garante que upload está habilitado
     const enrolled = await isEnrolled();
@@ -525,6 +531,60 @@ async function _uploadImediato(s) {
   }
 }
 
+function getOrigin(url) {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "";
+  }
+}
+
+async function enrollThisBrowser(code, deviceName) {
+  const s = await getSettings();
+  const baseUrl = s.backendUrl || API_BASE_URL;
+  const result = await enrollWithCode(
+    code,
+    deviceName || generateDeviceName(),
+    baseUrl,
+  );
+
+  // Reinicia loops de upload e sync após enrollment
+  await startUploadLoop();
+  await startPolicySyncLoop();
+
+  // Sincroniza política imediatamente e redireciona abas já abertas
+  const enrolledPolicy = await syncPolicy();
+  if (enrolledPolicy) {
+    const s3Blocked = await getS3Blacklist();
+    const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
+    await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
+  }
+  return result;
+}
+
+// Abas do site abertas antes da instalação não recebem o content script;
+// recarrega-as para o tutorial detectar a extensão e traz a primeira para frente.
+async function refreshGuardianSiteTabs() {
+  try {
+    const s = await getSettings();
+    const origin = getOrigin(s.backendUrl || API_BASE_URL);
+    if (!origin) return;
+    const tabs = await chrome.tabs.query({});
+    const siteTabs = tabs.filter((t) => t.url && getOrigin(t.url) === origin);
+    for (const tab of siteTabs) {
+      await chrome.tabs.reload(tab.id).catch(() => {});
+    }
+    const focus =
+      siteTabs.find((t) => /\/dashboard\//.test(t.url)) || siteTabs[0];
+    if (focus) {
+      await chrome.tabs.update(focus.id, { active: true }).catch(() => {});
+      await chrome.windows.update(focus.windowId, { focused: true }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("[Guardian] Não foi possível atualizar abas do site:", e);
+  }
+}
+
 // Recebe do content script: título + buscas detectadas + enrollment
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
@@ -564,26 +624,55 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       // Enrollment - vincula dispositivo via código
       if (msg?.type === "ENROLL_DEVICE") {
         try {
-          const deviceName = msg.deviceName || generateDeviceName();
-          const baseUrl = s.backendUrl || API_BASE_URL;
-          const result = await enrollWithCode(msg.code, deviceName, baseUrl);
-
-          // Reinicia loops de upload e sync após enrollment
-          await startUploadLoop();
-          await startPolicySyncLoop();
-
-          // Sincroniza política imediatamente e redireciona abas já abertas
-          const enrolledPolicy = await syncPolicy();
-          if (enrolledPolicy) {
-            const s3Blocked = await getS3Blacklist();
-            const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
-            await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
-          }
-
+          const result = await enrollThisBrowser(msg.code, msg.deviceName);
           sendResponse({ ok: true, ...result });
         } catch (e) {
           sendResponse({ ok: false, error: e?.message || String(e) });
         }
+        return;
+      }
+
+      // Ponte com o site GuardIAn (content script webBridge.js)
+      if (msg?.type === "WEB_BRIDGE") {
+        const trustedOrigin = getOrigin(s.backendUrl || API_BASE_URL);
+        const senderOrigin = getOrigin(sender?.url || sender?.origin || "");
+        if (!trustedOrigin || senderOrigin !== trustedOrigin) {
+          sendResponse({ trusted: false });
+          return;
+        }
+
+        if (msg.action === "PING") {
+          const info = await getEnrollmentInfo();
+          sendResponse({
+            trusted: true,
+            installed: true,
+            version: chrome.runtime.getManifest().version,
+            enrolled: info.isEnrolled,
+            deviceId: info.deviceId || null,
+          });
+          return;
+        }
+
+        if (msg.action === "ENROLL") {
+          const code = String(msg.code || "").trim().toLowerCase();
+          if (!code) {
+            sendResponse({ trusted: true, ok: false, error: "Código ausente" });
+            return;
+          }
+          try {
+            const result = await enrollThisBrowser(code);
+            sendResponse({ trusted: true, ok: true, ...result });
+          } catch (e) {
+            sendResponse({
+              trusted: true,
+              ok: false,
+              error: e?.message || String(e),
+            });
+          }
+          return;
+        }
+
+        sendResponse({ trusted: true, ok: false, error: "Ação desconhecida" });
         return;
       }
 

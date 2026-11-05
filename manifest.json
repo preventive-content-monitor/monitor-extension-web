@@ -31,6 +31,11 @@
         "src/content/pageObserver.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/content/webBridge.js"],
+      "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [

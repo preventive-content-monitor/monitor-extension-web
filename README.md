@@ -58,10 +58,12 @@ monitor-extension-web/
 
 ### 1. Instalação e Configuração
 
-1. Instale a extensão em modo desenvolvedor no Chrome do dependente
-2. Clique no ícone da extensão → **Opções**
-3. Faça login com as credenciais do responsável (`email` + `senha`)
-4. Insira o **código de vínculo** gerado no dashboard (válido 5 minutos)
+1. Na landing do GuardIAn, abra **Instalar extensão** e baixe o pacote ZIP
+2. Extraia o ZIP em uma pasta permanente do computador
+3. Instale a extensão em modo desenvolvedor no Chrome do dependente
+4. Clique no ícone da extensão → **Opções**
+5. Faça login com as credenciais do responsável (`email` + `senha`)
+6. Insira o **código de vínculo** gerado no dashboard (válido 5 minutos)
 5. A extensão associa este Chrome ao dispositivo cadastrado e começa a monitorar
 
 ### 2. Captura de Eventos

@@ -14,7 +14,7 @@ let authState = { isLoggedIn: false, email: null };
 document.addEventListener("DOMContentLoaded", async () => {
   // Injeta o IP dinâmico gerado pelo Terraform no link do dashboard e no placeholder
   const dashboardLink = document.getElementById("dashboardLink");
-  if (dashboardLink) dashboardLink.href = API_BASE_URL;
+  if (dashboardLink) dashboardLink.href = `${API_BASE_URL}/dashboard/`;
   const backendUrlInput = document.getElementById("backendUrl");
   if (backendUrlInput) backendUrlInput.placeholder = API_BASE_URL;
 
