@@ -33,7 +33,7 @@
           <span class="step-number">1</span>
           <div>
             <h2>Acesso do Responsável</h2>
-            <p>Entre com sua conta para vincular este dispositivo</p>
+            <p>Entre com a mesma conta do painel para vincular este navegador</p>
           </div>
         </div>
 
@@ -126,6 +126,7 @@
             <button class="btn btn-text btn-small" id="logoutBtn">
               Sair da conta
             </button>
+            <p class="popup-only popup-help">Sair da conta não desativa a proteção deste navegador.</p>
           </div>
         </div>
       </section>
@@ -143,6 +144,10 @@
         <div class="card-body">
           <!-- Não conectado -->
           <div id="notConnected">
+            <p class="popup-only popup-help">
+              No painel, clique em <strong>Dependentes → Vincular</strong>
+              no cartão do filho que usa este navegador. Cole o código abaixo.
+            </p>
             <div class="connection-guide">
               <div class="guide-step">
                 <span class="guide-icon">A</span>
@@ -185,6 +190,8 @@
               <p class="error-message" id="connectionError"></p>
             </div>
           </div>
+          <a href="#" id="popupDashboardLink" target="_blank" rel="noopener noreferrer"
+             class="popup-only popup-dashboard-link">Abrir painel em outra aba</a>
 
           <!-- Conectado -->
           <div id="connected" class="connected-state" style="display: none">

@@ -890,3 +890,98 @@ body:not(.logged-in) .advanced-section {
     flex-direction: column;
   }
 }
+
+.popup-only {
+  display: none;
+}
+
+.popup-mode,
+.popup-mode body {
+  width: 400px;
+  min-height: 0;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.popup-mode .header-content {
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 14px;
+  gap: 8px;
+}
+
+.popup-mode .logo-image {
+  width: 135px;
+}
+
+.popup-mode .status-badge {
+  align-self: auto;
+  font-size: .75rem;
+  padding: 7px 10px;
+}
+
+.popup-mode .container {
+  padding: 12px;
+  gap: 12px;
+}
+
+.popup-mode .card-header {
+  padding: 12px;
+  gap: 10px;
+}
+
+.popup-mode .auth-tabs,
+.popup-mode .connection-guide,
+.popup-mode #statusCard,
+.popup-mode .advanced-section,
+.popup-mode .logged-badge,
+.popup-mode .logged-avatar,
+.popup-mode body.logged-in #authCard .card-header {
+  display: none;
+}
+
+.popup-mode .logged-in-state {
+  gap: 6px;
+}
+
+.popup-mode .logged-info {
+  padding: 8px 10px;
+}
+
+.popup-mode .logged-email,
+.popup-mode .connected-name {
+  overflow-wrap: anywhere;
+}
+
+.popup-mode .code-input-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.popup-mode .code-input-row input {
+  min-width: 0;
+}
+
+.popup-mode .popup-only {
+  display: block;
+}
+
+.popup-help,
+.popup-dashboard-link {
+  margin: 0 0 12px;
+  font-size: .82rem;
+  color: var(--text-secondary);
+}
+
+.popup-mode .logged-in-state .popup-help {
+  margin: 0;
+}
+
+.popup-dashboard-link {
+  margin: 12px 0 0;
+  color: var(--brand-tertiary);
+}
+
+.popup-mode .toast {
+  width: calc(100% - 24px);
+  border-radius: var(--radius-md);
+}

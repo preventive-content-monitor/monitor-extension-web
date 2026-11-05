@@ -2,10 +2,10 @@
 // Edite monitor-extension-web/src/shared/constants.js.tpl e rode `terraform apply`.
 
 // Backend API (Spring Boot EC2 - autenticação, política, dispositivos)
-export const API_BASE_URL = "http://34.232.192.183";
+export const API_BASE_URL = "http://54.87.116.196";
 
 // Events API (API Gateway → SQS → Lambda - envio de eventos)
-export const EVENTS_API_URL = "https://5lbkngg79e.execute-api.us-east-1.amazonaws.com/";
+export const EVENTS_API_URL = "http://54.87.116.196";
 
 // Blocklist via S3 publico (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
 // CloudFront nao esta disponivel no AWS Academy (role voclabs nao tem cloudfront:CreateDistribution).

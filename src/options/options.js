@@ -6,6 +6,8 @@ import { API_BASE_URL } from "../shared/constants.js";
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
+const isPopup = new URLSearchParams(location.search).get("popup") === "1";
+document.documentElement.classList.toggle("popup-mode", isPopup);
 
 // Estado
 let authState = { isLoggedIn: false, email: null };
@@ -15,13 +17,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Injeta o IP dinâmico gerado pelo Terraform no link do dashboard e no placeholder
   const dashboardLink = document.getElementById("dashboardLink");
   if (dashboardLink) dashboardLink.href = `${API_BASE_URL}/dashboard/`;
+  $("#popupDashboardLink").href = `${API_BASE_URL}/dashboard/dependents.html`;
   const backendUrlInput = document.getElementById("backendUrl");
   if (backendUrlInput) backendUrlInput.placeholder = API_BASE_URL;
 
-  await loadAuthStatus();
-  await loadConnectionStatus();
-  await loadPolicyStatus();
+  await Promise.all([loadAuthStatus(), loadConnectionStatus()]);
   setupEventListeners();
+  if (!isPopup) await loadPolicyStatus();
 });
 
 // ================== AUTH ==================
@@ -30,14 +32,14 @@ async function loadAuthStatus() {
     const response = await chrome.runtime.sendMessage({
       type: "GET_AUTH_STATUS",
     });
-    if (response?.ok) {
-      authState = {
-        isLoggedIn: response.isLoggedIn,
-        email: response.email,
-      };
-    }
+    if (!response?.ok) throw new Error(response?.error || "Não foi possível consultar sua sessão.");
+    authState = {
+      isLoggedIn: response.isLoggedIn,
+      email: response.email,
+    };
   } catch (e) {
     console.warn("Failed to load auth status:", e);
+    $("#loginError").textContent = e.message || "Não foi possível consultar sua sessão. Reabra a extensão.";
   }
   updateAuthUI();
 }
@@ -83,8 +85,11 @@ async function handleLogin() {
 
     if (response?.ok) {
       authState = { isLoggedIn: true, email };
+      $("#loginPassword").value = "";
       updateAuthUI();
       showToast("Login realizado com sucesso!", "success");
+      await loadConnectionStatus();
+      $("#connectionCode").focus();
     } else {
       errorEl.textContent = response?.error || "Erro ao fazer login";
     }
@@ -151,12 +156,15 @@ async function handleRegister() {
 
 async function handleLogout() {
   try {
-    await chrome.runtime.sendMessage({ type: "LOGOUT" });
+    const response = await chrome.runtime.sendMessage({ type: "LOGOUT" });
+    if (!response?.ok) throw new Error(response?.error || "Não foi possível sair da conta.");
     authState = { isLoggedIn: false, email: null };
+    $("#connectionCode").value = "";
     updateAuthUI();
     showToast("Você saiu da conta", "info");
   } catch (e) {
     console.error("Logout failed:", e);
+    showToast(e.message || "Não foi possível sair da conta.", "error");
   }
 }
 
@@ -166,6 +174,8 @@ async function loadConnectionStatus() {
     const response = await chrome.runtime.sendMessage({
       type: "GET_CONNECTION_STATUS",
     });
+    if (!response?.ok) throw new Error(response?.error || "Não foi possível consultar o vínculo.");
+    $("#connectionError").textContent = "";
 
     if (response?.enrolled) {
       $("#notConnected").style.display = "none";
@@ -186,7 +196,8 @@ async function loadConnectionStatus() {
     }
   } catch (e) {
     console.warn("Failed to load connection status:", e);
-    updateStatusBadge(false);
+    $("#statusText").textContent = "Status indisponível";
+    $("#connectionError").textContent = e.message || "Não foi possível consultar o vínculo. Reabra a extensão.";
   }
 }
 
@@ -196,7 +207,13 @@ async function handleConnect() {
 
   errorEl.textContent = "";
 
-  if (!code || code.length < 6) {
+  if (!authState.isLoggedIn) {
+    $("#loginError").textContent = "Entre com a mesma conta do painel antes de vincular.";
+    $("#loginEmail").focus();
+    return;
+  }
+
+  if (!/^[a-z0-9]{6}$/.test(code)) {
     errorEl.textContent = "Digite o código de 6 caracteres";
     return;
   }
@@ -213,8 +230,9 @@ async function handleConnect() {
 
     if (response?.ok) {
       showToast("Dispositivo conectado!", "success");
+      $("#connectionCode").value = "";
       await loadConnectionStatus();
-      await loadPolicyStatus();
+      if (!isPopup) await loadPolicyStatus();
     } else {
       errorEl.textContent = response?.error || "Código inválido ou expirado";
     }

@@ -3,7 +3,10 @@
   "name": "Guardian - Proteção Familiar",
   "version": "0.2.0",
   "description": "Proteção digital para crianças e adolescentes. Monitora e filtra conteúdo impróprio.",
-  "action": { "default_title": "Guardian" },
+  "action": {
+    "default_title": "Guardian",
+    "default_popup": "src/options/options.html?popup=1"
+  },
   "icons": {
     "16": "assets/icon16.png",
     "48": "assets/icon48.png",

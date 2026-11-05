@@ -61,10 +61,21 @@ monitor-extension-web/
 1. Na landing do GuardIAn, abra **Instalar extensão** e baixe o pacote ZIP
 2. Extraia o ZIP em uma pasta permanente do computador
 3. Instale a extensão em modo desenvolvedor no Chrome do dependente
-4. Clique no ícone da extensão → **Opções**
+4. Clique no ícone do Guardian na barra do navegador: a janelinha abre diretamente, sem procurar **Opções**. Se não estiver visível, clique na peça de quebra-cabeça, encontre **Guardian - Proteção Familiar** e fixe o ícone na barra.
 5. Faça login com as credenciais do responsável (`email` + `senha`)
 6. Insira o **código de vínculo** gerado no dashboard (válido 5 minutos)
-5. A extensão associa este Chrome ao dispositivo cadastrado e começa a monitorar
+7. Clique em **Conectar**. A extensão associa este navegador ao dependente e mostra o nome em **Protegendo**.
+
+O popup reutiliza a tela e a lógica de autenticação/vinculação existentes. Antes
+do login, mostra apenas o acesso do responsável; depois, libera o campo do
+código. Ao fechar e reabrir, recupera a sessão e o vínculo armazenados pela
+extensão. Sair da conta não desconecta o dispositivo nem desativa a proteção.
+Um perfil do navegador protege um dependente por vez.
+
+A página completa de configuração continua disponível para compatibilidade e
+ajustes avançados, mas não é necessária para o fluxo normal. Depois de atualizar
+os arquivos da extensão instalada manualmente, clique em **Recarregar** em
+`chrome://extensions` ou `edge://extensions` para ativar o popup.
 
 ### 2. Captura de Eventos
 
