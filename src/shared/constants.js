@@ -1,7 +1,7 @@
 // URLs ajustadas pelo deploy-front.ps1.
 
 // Backend API (autenticação, política, dispositivos e eventos)
-export const API_BASE_URL = "https://54.234.93.96";
+export const API_BASE_URL = "https://3.218.37.191";
 
 // Blocklist via S3 publico (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
 // CloudFront nao esta disponivel no AWS Academy (role voclabs nao tem cloudfront:CreateDistribution).
