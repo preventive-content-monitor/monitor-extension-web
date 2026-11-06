@@ -16,6 +16,8 @@ import {
   logoutUser,
   authorizeExistingDevice,
   registerUser,
+  getKeywordStatus,
+  setKeyword,
 } from "./apiClient.js";
 import { EVENT_TYPES, API_BASE_URL } from "../shared/constants.js";
 import {
@@ -34,6 +36,77 @@ let s3RefreshTimer = null;
 
 // Domínios que o usuário optou por continuar acessando na sessão atual (WARN/EDUCATE bypass)
 const warnBypassSet = new Set();
+
+// ================== PROTEÇÃO CONTRA BURLA ==================
+const HEARTBEAT_ALARM = "guardian-heartbeat";
+const UNLOCK_MS = 5 * 60 * 1000;
+
+async function _baseUrl() {
+  const s = await getSettings();
+  return s.backendUrl || API_BASE_URL;
+}
+
+async function _protecaoPost(path, body) {
+  const resp = await authenticatedDeviceFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  }, await _baseUrl());
+  if (!resp.ok) {
+    const payload = await resp.json().catch(() => null);
+    throw new Error(payload?.mensagem || "Não foi possível falar com o servidor do GuardIAn.");
+  }
+  return await resp.json();
+}
+
+/** Sinal de vida: informa o servidor e arma a URL que denuncia a remoção da extensão. */
+async function enviarSinalDeVida() {
+  if (!(await isEnrolled())) {
+    await chrome.runtime.setUninstallURL("").catch(() => {});
+    return;
+  }
+  try {
+    const anonimoPermitido = await chrome.extension.isAllowedIncognitoAccess();
+    const data = await _protecaoPost("/api/protecao/sinal", {
+      versao: chrome.runtime.getManifest().version,
+      anonimoPermitido,
+    });
+    const { deviceId } = await chrome.storage.local.get(["deviceId"]);
+    if (data?.tokenRemocao && deviceId) {
+      const url = `${await _baseUrl()}/api/protecao/removida?d=${encodeURIComponent(deviceId)}&t=${encodeURIComponent(data.tokenRemocao)}`;
+      await chrome.runtime.setUninstallURL(url);
+    }
+    await chrome.storage.local.set({
+      palavraChaveDefinida: !!data?.palavraChaveDefinida,
+      anonimoPermitido,
+      ultimoSinal: Date.now(),
+    });
+  } catch (e) {
+    console.warn("[Guardian] Sinal de vida falhou:", e.message);
+  }
+}
+
+function agendarSinalDeVida() {
+  chrome.alarms.create(HEARTBEAT_ALARM, { delayInMinutes: 0.1, periodInMinutes: 5 });
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === HEARTBEAT_ALARM) enviarSinalDeVida();
+});
+
+async function _estaDesbloqueado() {
+  const { unlockedUntil } = await chrome.storage.session.get(["unlockedUntil"]);
+  return !!unlockedUntil && unlockedUntil > Date.now();
+}
+
+function _mensagemTentativa(resultado) {
+  if (resultado?.bloqueadoAte) {
+    const hora = new Date(resultado.bloqueadoAte).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return `Muitas tentativas. Tente de novo às ${hora}. O responsável foi avisado.`;
+  }
+  const restantes = resultado?.tentativasRestantes;
+  return restantes ? `Palavra-chave errada. Restam ${restantes} tentativa(s).` : "Palavra-chave errada.";
+}
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   try {
@@ -88,6 +161,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
     await startUploadLoop();
     await startPolicySyncLoop();
+    agendarSinalDeVida();
   } catch (e) {
     console.error("onInstalled failed:", e);
   }
@@ -123,6 +197,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
     await startUploadLoop();
     await startPolicySyncLoop();
+    agendarSinalDeVida();
   } catch (e) {
     console.error("onStartup failed:", e);
   }
@@ -548,6 +623,8 @@ async function initializeEnrolledMonitoring() {
     const s3Blocked = await getS3Blacklist();
     const allBlocked = [...new Set([...(enrolledPolicy.blockedDomains || []), ...s3Blocked])];
     await _redirectOpenBlockedTabs(allBlocked, enrolledPolicy.mode || "BLOCK");
+    agendarSinalDeVida();
+    await enviarSinalDeVida();
     return null;
   } catch (error) {
     console.error("[Guardian] Vínculo salvo, mas a proteção não foi sincronizada:", error);
@@ -788,14 +865,97 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      // Desconectar dispositivo
+      // Desconectar dispositivo: só com a palavra-chave conferida no servidor
       if (msg?.type === "DISCONNECT_DEVICE") {
-        const { deviceToken } = await chrome.storage.local.get(["deviceToken"]);
-        await logoutUser(deviceToken, s.backendUrl || API_BASE_URL);
+        const palavraChave = String(msg.palavraChave || "");
+        if (!palavraChave) {
+          sendResponse({ ok: false, error: "Digite a palavra-chave para desconectar." });
+          return;
+        }
+        let resultado;
+        try {
+          resultado = await _protecaoPost("/api/protecao/desconectar", { palavraChave });
+        } catch (e) {
+          sendResponse({ ok: false, error: "Sem conexão com o GuardIAn. A proteção continua ativa." });
+          return;
+        }
+        if (!resultado?.valida) {
+          sendResponse({ ok: false, error: _mensagemTentativa(resultado), ...resultado });
+          return;
+        }
+        await chrome.runtime.setUninstallURL("").catch(() => {});
+        await chrome.alarms.clear(HEARTBEAT_ALARM).catch(() => {});
         await clearEnrollment();
-        await chrome.storage.local.remove(["cachedPolicy"]);
+        await chrome.storage.local.remove(["cachedPolicy", "palavraChaveDefinida"]);
+        await chrome.storage.session.remove(["unlockedUntil"]);
         await syncBlocklistToDNR([], false, []); // Limpa DNR
         sendResponse({ ok: true });
+        return;
+      }
+
+      // Tela de bloqueio do popup: estado atual
+      if (msg?.type === "GET_LOCK_STATUS") {
+        const info = await getEnrollmentInfo();
+        const { palavraChaveDefinida, anonimoPermitido } = await chrome.storage.local.get([
+          "palavraChaveDefinida",
+          "anonimoPermitido",
+        ]);
+        sendResponse({
+          ok: true,
+          enrolled: info.isEnrolled,
+          locked: info.isEnrolled && !(await _estaDesbloqueado()),
+          palavraChaveDefinida: palavraChaveDefinida !== false,
+          anonimoPermitido: await chrome.extension.isAllowedIncognitoAccess().catch(() => anonimoPermitido),
+          dependentNickname: info.dependentNickname,
+        });
+        return;
+      }
+
+      // Destrava as configurações por 5 minutos com a palavra-chave
+      if (msg?.type === "UNLOCK_SETTINGS") {
+        try {
+          const resultado = await _protecaoPost("/api/protecao/verificar", {
+            palavraChave: String(msg.palavraChave || ""),
+          });
+          if (resultado?.valida) {
+            await chrome.storage.session.set({ unlockedUntil: Date.now() + UNLOCK_MS });
+            sendResponse({ ok: true });
+          } else {
+            sendResponse({ ok: false, error: _mensagemTentativa(resultado), ...resultado });
+          }
+        } catch (e) {
+          sendResponse({ ok: false, error: "Sem conexão com o GuardIAn. Tente de novo em instantes." });
+        }
+        return;
+      }
+
+      if (msg?.type === "LOCK_SETTINGS") {
+        await chrome.storage.session.remove(["unlockedUntil"]);
+        sendResponse({ ok: true });
+        return;
+      }
+
+      // Palavra-chave no fluxo "pai e filho em computadores diferentes"
+      if (msg?.type === "KEYWORD_STATUS") {
+        try {
+          const auth = await chrome.storage.session.get(["linkToken"]);
+          if (!auth.linkToken) throw new Error("Entre com a conta do responsável.");
+          sendResponse({ ok: true, definida: await getKeywordStatus(auth.linkToken, await _baseUrl()) });
+        } catch (e) {
+          sendResponse({ ok: false, error: e?.message || String(e) });
+        }
+        return;
+      }
+
+      if (msg?.type === "SET_KEYWORD") {
+        try {
+          const auth = await chrome.storage.session.get(["linkToken"]);
+          if (!auth.linkToken) throw new Error("Entre com a conta do responsável.");
+          await setKeyword(auth.linkToken, String(msg.palavraChave || ""), await _baseUrl());
+          sendResponse({ ok: true });
+        } catch (e) {
+          sendResponse({ ok: false, error: e?.message || String(e) });
+        }
         return;
       }
 

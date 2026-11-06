@@ -11,6 +11,73 @@ document.documentElement.classList.toggle("popup-mode", isPopup);
 
 // Estado
 let authState = { isLoggedIn: false, email: null };
+let keywordRequired = false;
+
+// ================== BLOQUEIO POR PALAVRA-CHAVE ==================
+async function refreshLock() {
+  try {
+    const st = await chrome.runtime.sendMessage({ type: "GET_LOCK_STATUS" });
+    const locked = !!st?.ok && st.locked;
+    document.body.classList.toggle("is-locked", locked);
+    $("#lockCard").hidden = !locked;
+    if (locked) {
+      $("#lockChildName").textContent = st.dependentNickname || "seu filho";
+      $("#lockIncognitoWarning").hidden = st.anonimoPermitido !== false;
+      $("#lockNoKeyword").hidden = st.palavraChaveDefinida;
+      $("#unlockForm").hidden = !st.palavraChaveDefinida;
+      updateStatusBadge(true);
+      setTimeout(() => $("#unlockKeyword")?.focus(), 50);
+    }
+    return locked;
+  } catch (e) {
+    console.warn("Failed to load lock status:", e);
+    return false;
+  }
+}
+
+async function handleUnlock(event) {
+  event.preventDefault();
+  const input = $("#unlockKeyword");
+  const errorEl = $("#unlockError");
+  errorEl.textContent = "";
+  if (!input.value.trim()) {
+    errorEl.textContent = "Digite a palavra-chave.";
+    return;
+  }
+  const btn = $("#unlockBtn");
+  btn.disabled = true;
+  btn.textContent = "Conferindo...";
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "UNLOCK_SETTINGS", palavraChave: input.value });
+    if (response?.ok) {
+      input.value = "";
+      await refreshLock();
+      await Promise.all([loadAuthStatus(), loadConnectionStatus()]);
+      if (!isPopup) await loadPolicyStatus();
+      showToast("Configurações liberadas por 5 minutos", "success");
+    } else {
+      errorEl.textContent = response?.error || "Palavra-chave errada.";
+      input.select();
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Abrir configurações";
+  }
+}
+
+async function handleLockNow() {
+  await chrome.runtime.sendMessage({ type: "LOCK_SETTINGS" });
+  await refreshLock();
+}
+
+async function checkKeywordSetup() {
+  keywordRequired = false;
+  if (authState.isLoggedIn) {
+    const response = await chrome.runtime.sendMessage({ type: "KEYWORD_STATUS" }).catch(() => null);
+    keywordRequired = !!response?.ok && !response.definida;
+  }
+  $("#keywordSetup").hidden = !keywordRequired;
+}
 
 // ================== INICIALIZAÇÃO ==================
 document.addEventListener("DOMContentLoaded", async () => {
@@ -23,7 +90,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await Promise.all([loadAuthStatus(), loadConnectionStatus()]);
   setupEventListeners();
-  if (!isPopup) await loadPolicyStatus();
+  const locked = await refreshLock();
+  if (!locked) await checkKeywordSetup();
+  if (!isPopup && !locked) await loadPolicyStatus();
 });
 
 // ================== AUTH ==================
@@ -91,10 +160,11 @@ async function handleLogin() {
       } else {
         authState = { isLoggedIn: true, email };
         updateAuthUI();
+        await checkKeywordSetup();
         showToast("Autorização temporária concedida.", "success");
       }
       await loadConnectionStatus();
-      if (!response.migrated) $("#connectionCode").focus();
+      if (!response.migrated) ($("#keywordSetup").hidden ? $("#connectionCode") : $("#newKeyword")).focus();
     } else {
       errorEl.textContent = response?.error || "Erro ao fazer login";
     }
@@ -228,6 +298,29 @@ async function handleConnect() {
     return;
   }
 
+  if (keywordRequired) {
+    const palavra = $("#newKeyword").value.trim();
+    if (palavra.length < 4) {
+      errorEl.textContent = "A palavra-chave precisa ter pelo menos 4 letras.";
+      $("#newKeyword").focus();
+      return;
+    }
+    if (palavra !== $("#newKeywordConfirm").value.trim()) {
+      errorEl.textContent = "As palavras-chave não são iguais.";
+      $("#newKeywordConfirm").focus();
+      return;
+    }
+    const saved = await chrome.runtime.sendMessage({ type: "SET_KEYWORD", palavraChave: palavra });
+    if (!saved?.ok) {
+      errorEl.textContent = saved?.error || "Não foi possível salvar a palavra-chave.";
+      return;
+    }
+    keywordRequired = false;
+    $("#keywordSetup").hidden = true;
+    $("#newKeyword").value = "";
+    $("#newKeywordConfirm").value = "";
+  }
+
   const btn = $("#connectBtn");
   btn.disabled = true;
   btn.innerHTML = '<span class="btn-icon">⏳</span> Conectando...';
@@ -244,6 +337,7 @@ async function handleConnect() {
       await loadAuthStatus();
       await loadConnectionStatus();
       if (!isPopup) await loadPolicyStatus();
+      await refreshLock();
     } else {
       errorEl.textContent = response?.error || "Código inválido ou expirado";
       if (response?.error?.includes("autorização temporária expirou")) {
@@ -260,20 +354,22 @@ async function handleConnect() {
 }
 
 async function handleDisconnect() {
-  const confirmed = await showModal(
-    "Desconectar dispositivo?",
-    "A proteção será desativada neste navegador.",
+  const palavraChave = await showModal(
+    "Desconectar este navegador?",
+    "A proteção será desligada. Digite a palavra-chave do responsável para confirmar.",
     "⚠️",
+    { input: true },
   );
 
-  if (!confirmed) return;
+  if (!palavraChave) return;
 
   try {
-    const response = await chrome.runtime.sendMessage({ type: "DISCONNECT_DEVICE" });
+    const response = await chrome.runtime.sendMessage({ type: "DISCONNECT_DEVICE", palavraChave });
     if (!response?.ok) throw new Error(response?.error || "Não foi possível desconectar.");
     showToast("Dispositivo desconectado", "info");
     await loadConnectionStatus();
     await loadPolicyStatus();
+    await refreshLock();
   } catch (e) {
     showToast(e.message || "Erro ao desconectar", "error");
   }
@@ -473,9 +569,23 @@ function setupEventListeners() {
     modalResolve?.(false);
   });
   $("#modalConfirm").addEventListener("click", () => {
+    const input = $("#modalInput");
+    if (!input.hidden && !input.value.trim()) {
+      $("#modalError").textContent = "Digite a palavra-chave.";
+      input.focus();
+      return;
+    }
     $("#modalOverlay").classList.remove("show");
-    modalResolve?.(true);
+    modalResolve?.(input.hidden ? true : input.value);
+    input.value = "";
   });
+  $("#modalInput").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") $("#modalConfirm").click();
+  });
+
+  // Palavra-chave
+  $("#unlockForm").addEventListener("submit", handleUnlock);
+  $("#lockNowBtn").addEventListener("click", handleLockNow);
 }
 
 // ================== TOAST ==================
@@ -504,13 +614,17 @@ function showToast(message, type = "info") {
 // ================== MODAL ==================
 let modalResolve = null;
 
-function showModal(title, message, icon = "⚠️") {
+function showModal(title, message, icon = "⚠️", options = {}) {
   return new Promise((resolve) => {
     modalResolve = resolve;
 
     $("#modalIcon").textContent = icon;
     $("#modalTitle").textContent = title;
     $("#modalMessage").textContent = message;
+    $("#modalError").textContent = "";
+    $("#modalInput").hidden = !options.input;
+    $("#modalInput").value = "";
     $("#modalOverlay").classList.add("show");
+    if (options.input) setTimeout(() => $("#modalInput").focus(), 50);
   });
 }

@@ -116,7 +116,7 @@ export async function syncBlocklistToDNR(
       action: {
         type: "redirect",
         redirect: {
-          url: `${BLOCKED_PAGE_BASE}?url=site-nao-permitido&mode=whitelist`,
+          url: `${BLOCKED_PAGE_BASE}?mode=whitelist&url=site-nao-permitido`,
         },
       },
       // A whitelist é uma escolha explícita do responsável ("só estes sites"),

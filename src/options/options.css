@@ -70,9 +70,119 @@ body:not(.logged-in):not(.is-enrolled) .card:not(#authCard) {
 }
 
 body.is-enrolled:not(.logged-in) #authCard,
-body.is-enrolled:not(.logged-in) #disconnectBtn,
 body.logged-in #manageConnectionBtn {
   display: none !important;
+}
+
+/* ===== Bloqueio por palavra-chave ===== */
+[hidden] {
+  display: none !important;
+}
+
+body.is-locked .container > :not(#lockCard),
+body.is-locked #popupDashboardLink {
+  display: none !important;
+}
+
+.lock-card {
+  text-align: center;
+  padding: 1.5rem 1.25rem;
+  display: grid;
+  gap: 0.6rem;
+  justify-items: center;
+}
+
+.lock-shield {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.lock-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 1.15rem;
+  color: var(--text-primary);
+}
+
+.lock-child {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.lock-transparency,
+.lock-help {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  max-width: 34ch;
+}
+
+.lock-warning {
+  font-size: 0.82rem;
+  color: #8a5300;
+  background: var(--warning-soft);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+}
+
+.lock-form {
+  width: 100%;
+  display: grid;
+  gap: 0.5rem;
+  text-align: left;
+  margin-top: 0.5rem;
+}
+
+.lock-form label,
+.keyword-setup label {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+
+.lock-form input,
+.keyword-setup input,
+.modal-input {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.lock-form input:focus,
+.keyword-setup input:focus,
+.modal-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(29, 124, 206, 0.18);
+}
+
+.keyword-setup {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem;
+  margin-bottom: 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+  border: 1px solid var(--line-soft);
+}
+
+.keyword-setup .help-text {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.modal-input {
+  margin-top: 0.75rem;
 }
 
 body:not(.logged-in) .advanced-section {

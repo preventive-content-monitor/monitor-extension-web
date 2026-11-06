@@ -19,18 +19,18 @@ if (!blockedDomain) {
   }
 }
 
-document.getElementById("blockedUrl").textContent = blockedDomain;
+document.getElementById("blockedUrl").textContent =
+  blockedDomain === "site-nao-permitido" ? "Site fora da lista liberada" : blockedDomain;
 
 // Atualiza mensagem para modo whitelist
 if (mode === "whitelist") {
   const reasonBox = document.querySelector(".info-box");
   if (reasonBox) {
     reasonBox.innerHTML = `
-      <h3>🔒 Por que este site foi bloqueado?</h3>
+      <h2>Por que foi bloqueado?</h2>
       <p>
-        Seu responsável configurou uma lista de sites permitidos.
-        <strong>Apenas os sites dessa lista podem ser acessados.</strong>
-        Este site não está na lista de sites permitidos.
+        Seu responsável escolheu uma lista de sites liberados, e
+        <strong>este site ainda não está nela</strong>.
       </p>
     `;
   }

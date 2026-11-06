@@ -67,6 +67,25 @@ export async function authorizeExistingDevice(deviceId, token, baseUrl) {
 
 let renewalPromise = null;
 
+async function bearerJson(path, method, token, body, baseUrl) {
+  const res = await fetch(buildUrl(baseUrl, path), {
+    method,
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(await readErrorPayload(res));
+  return res.status === 204 ? null : await res.json();
+}
+
+export async function getKeywordStatus(token, baseUrl) {
+  const data = await bearerJson("/api/protecao/palavra-chave", "GET", token, null, baseUrl);
+  return !!data?.definida;
+}
+
+export async function setKeyword(token, palavraChave, baseUrl) {
+  await bearerJson("/api/protecao/palavra-chave", "PUT", token, { palavraChave }, baseUrl);
+}
+
 function tokenExpiration(token) {
   try {
     const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");

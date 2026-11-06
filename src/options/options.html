@@ -27,6 +27,31 @@
     </header>
 
     <main class="container">
+      <!-- ============ BLOQUEIO POR PALAVRA-CHAVE ============ -->
+      <section class="card lock-card" id="lockCard" hidden>
+        <div class="lock-shield" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+        </div>
+        <h2 class="lock-title">Este navegador está protegido</h2>
+        <p class="lock-child">Protegendo <strong id="lockChildName">seu filho</strong></p>
+        <p class="lock-transparency">
+          O GuardIAn bloqueia sites impróprios e envia ao responsável um resumo dos sites visitados.
+          Não lemos mensagens nem senhas.
+        </p>
+        <div class="lock-warning" id="lockIncognitoWarning" hidden>
+          A guia anônima ainda não está protegida. Responsável: ative “Permitir no modo anônimo” nos detalhes da extensão.
+        </div>
+        <form class="lock-form" id="unlockForm" autocomplete="off">
+          <label for="unlockKeyword">Responsável: digite a palavra-chave</label>
+          <input type="password" id="unlockKeyword" placeholder="Palavra-chave" autocomplete="off" spellcheck="false" />
+          <p class="error-message" id="unlockError" role="alert"></p>
+          <button type="submit" class="btn btn-primary btn-large btn-full" id="unlockBtn">Abrir configurações</button>
+        </form>
+        <p class="lock-help" id="lockNoKeyword" hidden>
+          Nenhuma palavra-chave criada ainda. Crie uma no painel do GuardIAn, em <strong>Dispositivos</strong>.
+        </p>
+      </section>
+
       <!-- ============ LOGIN/REGISTRO ============ -->
       <section class="card card-highlight login-card" id="authCard">
         <div class="card-header">
@@ -165,6 +190,13 @@
               </div>
             </div>
 
+            <div class="keyword-setup" id="keywordSetup" hidden>
+              <label for="newKeyword">Crie uma palavra-chave</label>
+              <p class="help-text">Algo fácil para você e difícil para a criança adivinhar (ex.: nome do primeiro cachorro). Ela substitui seu e-mail e senha neste navegador.</p>
+              <input type="password" id="newKeyword" placeholder="Palavra-chave" autocomplete="new-password" spellcheck="false" />
+              <input type="password" id="newKeywordConfirm" placeholder="Repita a palavra-chave" autocomplete="new-password" spellcheck="false" />
+            </div>
+
             <div class="code-input-area">
               <label for="connectionCode">Código de 6 caracteres:</label>
               <div class="code-input-row">
@@ -207,6 +239,7 @@
               <span class="connected-badge">✓ Ativo</span>
             </div>
             <button class="btn btn-text btn-small" id="manageConnectionBtn">Sou responsável: gerenciar vínculo</button>
+            <button class="btn btn-text btn-small" id="lockNowBtn">Bloquear configurações</button>
             <button class="btn btn-text btn-danger" id="disconnectBtn">
               Desconectar dispositivo
             </button>
@@ -316,6 +349,8 @@
         <div class="modal-icon" id="modalIcon">⚠️</div>
         <h3 class="modal-title" id="modalTitle">Confirmar ação</h3>
         <p class="modal-message" id="modalMessage">Tem certeza?</p>
+        <input type="password" id="modalInput" class="modal-input" placeholder="Palavra-chave" autocomplete="off" hidden />
+        <p class="error-message" id="modalError" role="alert"></p>
         <div class="modal-actions">
           <button class="btn btn-secondary" id="modalCancel">Cancelar</button>
           <button class="btn btn-secondary btn-danger" id="modalConfirm">
