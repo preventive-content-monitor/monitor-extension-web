@@ -39,7 +39,9 @@ const warnBypassSet = new Set();
 
 // ================== PROTEÇÃO CONTRA BURLA ==================
 const HEARTBEAT_ALARM = "guardian-heartbeat";
+const SETTINGS_LOCK_ALARM = "guardian-settings-lock";
 const UNLOCK_MS = 5 * 60 * 1000;
+const tabsBeingProtected = new Set();
 
 async function _baseUrl() {
   const s = await getSettings();
@@ -92,12 +94,70 @@ function agendarSinalDeVida() {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === HEARTBEAT_ALARM) enviarSinalDeVida();
+  if (alarm.name === SETTINGS_LOCK_ALARM) {
+    chrome.storage.session.remove(["unlockedUntil"])
+      .then(_protegerAbasAbertas)
+      .catch((error) => console.warn("[Guardian] Não foi possível bloquear novamente as configurações:", error?.message || error));
+  }
 });
 
 async function _estaDesbloqueado() {
   const { unlockedUntil } = await chrome.storage.session.get(["unlockedUntil"]);
   return !!unlockedUntil && unlockedUntil > Date.now();
 }
+
+function _paginaDeGerenciamento(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (!["chrome:", "edge:"].includes(parsed.protocol.toLowerCase())) return null;
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase().replace(/\/+$/, "");
+    if (host === "extensions") return "extensions";
+    if (host === "settings" && (path === "/reset" || path.startsWith("/reset/"))) return "reset";
+  } catch (error) {
+    console.warn("[Guardian] Não foi possível verificar uma página do navegador:", error?.message || error);
+  }
+  return null;
+}
+
+async function _protegerAbaDoNavegador(tab) {
+  if (!tab?.id || tabsBeingProtected.has(tab.id)) return;
+  tabsBeingProtected.add(tab.id);
+  try {
+    if (!(await isEnrolled()) || await _estaDesbloqueado()) return;
+
+    if (tab.incognito && !tab.url?.startsWith(chrome.runtime.getURL(""))) {
+      await chrome.tabs.remove(tab.id);
+      return;
+    }
+
+    const reason = _paginaDeGerenciamento(tab.url);
+    if (!reason) return;
+    const optionsUrl = `${chrome.runtime.getURL("src/options/options.html")}?protection=${reason}`;
+    await chrome.tabs.update(tab.id, { url: optionsUrl });
+  } catch (error) {
+    console.warn("[Guardian] Não foi possível aplicar a proteção à aba:", error?.message || error);
+  } finally {
+    tabsBeingProtected.delete(tab.id);
+  }
+}
+
+async function _protegerAbasAbertas() {
+  try {
+    const tabs = await chrome.tabs.query({});
+    await Promise.all(tabs.map(_protegerAbaDoNavegador));
+  } catch (error) {
+    console.warn("[Guardian] Não foi possível verificar as abas abertas:", error?.message || error);
+  }
+}
+
+chrome.tabs.onCreated.addListener(_protegerAbaDoNavegador);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url || changeInfo.status === "complete") {
+    _protegerAbaDoNavegador(tab);
+  }
+});
 
 function _mensagemTentativa(resultado) {
   if (resultado?.bloqueadoAte) {
@@ -116,6 +176,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       await chrome.storage.sync.set({ backendUrl: API_BASE_URL });
       await chrome.storage.local.remove(["authToken", "authEmail", "authAt"]);
       await chrome.storage.session.remove(["linkToken", "authEmail", "authAt"]);
+      await chrome.storage.session.remove(["unlockedUntil"]);
+      await chrome.alarms.clear(SETTINGS_LOCK_ALARM);
     }
     await ensureDefaults();
     await refreshGuardianSiteTabs();
@@ -123,6 +185,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     // Se já está enrolled, garante que upload está habilitado
     const enrolled = await isEnrolled();
     if (enrolled) {
+      await _protegerAbasAbertas();
       const s = await getSettings();
       if (!s.uploadEnabled) {
         console.log(
@@ -642,6 +705,7 @@ async function enrollThisBrowser(code, deviceName, token) {
     token,
   );
   const warning = await initializeEnrolledMonitoring();
+  await _protegerAbasAbertas();
   return { ...result, warning };
 }
 
@@ -736,6 +800,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             trusted: true,
             installed: true,
             version: chrome.runtime.getManifest().version,
+            browserProtection: true,
+            anonimoPermitido: await chrome.extension.isAllowedIncognitoAccess().catch(() => false),
             scopedEnrollment: true,
             enrolled: info.isEnrolled,
             requiresAuthorization: info.needsAuthorization,
@@ -918,7 +984,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             palavraChave: String(msg.palavraChave || ""),
           });
           if (resultado?.valida) {
-            await chrome.storage.session.set({ unlockedUntil: Date.now() + UNLOCK_MS });
+            const unlockedUntil = Date.now() + UNLOCK_MS;
+            await chrome.storage.session.set({ unlockedUntil });
+            await chrome.alarms.create(SETTINGS_LOCK_ALARM, { when: unlockedUntil });
             sendResponse({ ok: true });
           } else {
             sendResponse({ ok: false, error: _mensagemTentativa(resultado), ...resultado });
@@ -931,6 +999,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       if (msg?.type === "LOCK_SETTINGS") {
         await chrome.storage.session.remove(["unlockedUntil"]);
+        await chrome.alarms.clear(SETTINGS_LOCK_ALARM);
+        await _protegerAbasAbertas();
         sendResponse({ ok: true });
         return;
       }

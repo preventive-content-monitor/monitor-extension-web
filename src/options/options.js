@@ -7,6 +7,7 @@ import { API_BASE_URL } from "../shared/constants.js";
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 const isPopup = new URLSearchParams(location.search).get("popup") === "1";
+const protectionReason = new URLSearchParams(location.search).get("protection");
 document.documentElement.classList.toggle("popup-mode", isPopup);
 
 // Estado
@@ -18,6 +19,13 @@ async function refreshLock() {
   try {
     const st = await chrome.runtime.sendMessage({ type: "GET_LOCK_STATUS" });
     const locked = !!st?.ok && st.locked;
+    const reason = $("#lockReason");
+    if (reason && protectionReason) {
+      reason.hidden = false;
+      reason.textContent = protectionReason === "reset"
+        ? "A restauração do navegador é bloqueada enquanto o GuardIAn protege este computador. Responsável: digite sua palavra-chave; depois abra novamente a página de restauração."
+        : "As configurações de extensões são protegidas. Responsável: digite sua palavra-chave; depois abra novamente chrome://extensions ou edge://extensions.";
+    }
     document.body.classList.toggle("is-locked", locked);
     $("#lockCard").hidden = !locked;
     if (locked) {
@@ -54,7 +62,12 @@ async function handleUnlock(event) {
       await refreshLock();
       await Promise.all([loadAuthStatus(), loadConnectionStatus()]);
       if (!isPopup) await loadPolicyStatus();
-      showToast("Configurações liberadas por 5 minutos", "success");
+      showToast(
+        protectionReason
+          ? "Configurações liberadas por 5 minutos. Abra novamente a página do navegador."
+          : "Configurações liberadas por 5 minutos",
+        "success",
+      );
     } else {
       errorEl.textContent = response?.error || "Palavra-chave errada.";
       input.select();

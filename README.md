@@ -59,11 +59,10 @@ monitor-extension-web/
 
 1. Na landing do GuardIAn, abra **Instalar extensão** e baixe o pacote ZIP
 2. Extraia o ZIP em uma pasta permanente do computador
-3. Instale a extensão em modo desenvolvedor no Chrome do dependente
-4. Clique no ícone do Guardian na barra do navegador: a janelinha abre diretamente, sem procurar **Opções**. Se não estiver visível, clique na peça de quebra-cabeça, encontre **Guardian - Proteção Familiar** e fixe o ícone na barra.
-5. Faça login com as credenciais do responsável (`email` + `senha`)
-6. Insira o **código de vínculo** gerado no dashboard (válido 5 minutos)
-7. Clique em **Conectar**. A extensão associa este navegador ao dependente e mostra o nome em **Protegendo**.
+3. Instale a extensão em modo desenvolvedor no Chrome ou Edge do dependente
+4. Na página de extensões, abra **Detalhes** do GuardIAn e ative **Permitir no modo anônimo** (Chrome) ou **Permitir em InPrivate** (Edge). O navegador exige essa permissão manual; sem ela, a extensão não consegue ver nem fechar abas anônimas.
+5. Volte ao GuardIAn. Clique no ícone da extensão na barra do navegador (ou em 🧩 → Guardian), entre com as credenciais do responsável (`email` + `senha`) e insira o **código de vínculo** gerado no painel (válido 5 minutos)
+6. Clique em **Conectar**. Depois do vínculo, a extensão fecha abas anônimas e protege as páginas de extensões e de restauração do navegador enquanto estiver bloqueada.
 
 O login da extensão concede apenas uma autorização temporária para vincular,
 não uma sessão do painel. Depois do vínculo, a extensão descarta essa
@@ -71,7 +70,17 @@ autorização e guarda somente uma credencial limitada ao próprio dispositivo.
 Um perfil do navegador protege um dependente por vez.
 
 A página completa de configuração continua disponível para compatibilidade e
-ajustes avançados, mas não é necessária para o fluxo normal.
+ajustes avançados, mas não é necessária para o fluxo normal. A proteção contra
+alterações é aplicada somente depois do vínculo: abrir `chrome://extensions`,
+`edge://extensions` ou a página de restauração leva à tela protegida da extensão.
+O responsável pode digitar a palavra-chave para liberar as configurações por
+cinco minutos; ao expirar ou bloquear manualmente, as abas protegidas voltam a
+ser interceptadas.
+
+Essa proteção depende de o GuardIAn continuar habilitado e de **Permitir no
+modo anônimo / Permitir em InPrivate** permanecer ativo. Uma extensão instalada
+em modo desenvolvedor não substitui políticas administradas do navegador ou do
+Windows e não pode impedir todas as formas de desativação ou remoção.
 
 **Atualização obrigatória de instalações antigas:** baixe o novo ZIP, extraia os
 arquivos na pasta da extensão já instalada e clique em **Recarregar** em
@@ -147,7 +156,9 @@ Quando o bloqueio é ativado, o usuário é redirecionado para `blocked.html`.
 ```
 
 > Se o IP mudar, emita um certificado para o novo IP, publique novamente o
-> frontend e recarregue a extensão em `chrome://extensions`.
+> frontend e recarregue a extensão em `chrome://extensions`. A extensão precisa
+> ser recarregada pelo responsável durante a atualização; usuários de versões
+> anteriores devem atualizar antes de vincular para receber as proteções novas.
 
 ---
 
