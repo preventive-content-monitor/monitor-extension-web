@@ -1,12 +1,12 @@
 // URLs ajustadas pelo deploy-front.ps1.
 
 // Backend API (autenticação, política, dispositivos e eventos)
-export const API_BASE_URL = "https://3.218.37.191";
+export const API_BASE_URL = "https://54.221.87.15";
 
 // Blocklist via S3 publico (gerado pelo deploy-front.ps1 a partir dos outputs do Terraform S3)
 // CloudFront nao esta disponivel no AWS Academy (role voclabs nao tem cloudfront:CreateDistribution).
 // O bucket S3 esta configurado como publico com CORS habilitado para acesso pela extensao Chrome.
-export const S3_BLACKLIST_URL = "https://guardian-blocklist-tcc-8521a9.s3.us-east-1.amazonaws.com/blackList.json";
+export const S3_BLACKLIST_URL = "https://guardian-blocklist-650846818818-20261106.s3.us-east-1.amazonaws.com/blackList.json";
 
 // Tipos de evento compatíveis com o backend Guardian
 export const EVENT_TYPES = {
