@@ -971,7 +971,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             // Redireciona abas já abertas em domínios bloqueados
             const s3Blocked = await getS3Blacklist();
             const allBlocked = [...new Set([...(policy.blockedDomains || []), ...s3Blocked])];
-            await _redirectOpenBlockedTabs(allBlocked);
+            await _redirectOpenBlockedTabs(allBlocked, policy.mode || "BLOCK");
             sendResponse({
               ok: true,
               policy: policy,

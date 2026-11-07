@@ -33,10 +33,10 @@ const WARN_PAGE_BASE = chrome.runtime.getURL("src/warned/warn.html");
  * EDUCATE não aparece aqui: nesse modo nada é interceptado (ver INTERCEPTA_CONTEUDO).
  */
 function substituicaoDeIntercepcao(mode, dominio) {
-  const dom = encodeURIComponent(dominio);
+  const dom = dominio ? `domain=${encodeURIComponent(dominio)}&` : "";
 
-  if (mode === "WARN") return `${WARN_PAGE_BASE}?domain=${dom}&url=\\1`;
-  return `${BLOCKED_PAGE_BASE}?domain=${dom}&url=\\1`;
+  if (mode === "WARN") return `${WARN_PAGE_BASE}?${dom}url=\\1`;
+  return `${BLOCKED_PAGE_BASE}?${dom}url=\\1`;
 }
 
 /**
@@ -142,58 +142,60 @@ export async function syncBlocklistToDNR(
       cleanedBlocked,
     );
 
-    newRules = cleanedBlocked.slice(0, 5000).map((d, idx) => {
-      // Domínio usado no parâmetro da página de aviso (parte antes da "/")
-      const dominio = d.split("/")[0];
+    // O Chrome aceita no máximo MAX_NUMBER_OF_REGEX_RULES (1000) regras com regex e
+    // recusa o lote INTEIRO se passar disso. Com a blacklist do S3 (1000+ domínios)
+    // uma regra por domínio deixava o navegador sem nenhum bloqueio. Por isso todos
+    // os domínios puros vão numa única regra; as páginas de bloqueio/aviso tiram o
+    // domínio da URL capturada.
+    const dominios = cleanedBlocked.filter((d) => !d.includes("/"));
+    const padroes = cleanedBlocked.filter((d) => d.includes("/"));
+    const limiteRegex = (chrome.declarativeNetRequest.MAX_NUMBER_OF_REGEX_RULES || 1000) - 50;
 
-      // Entradas com "/" são padrões de URL específicos (ex: youtube.com/watch?v=abc).
-      // O regexFilter precisa casar a URL inteira para o grupo 1 capturá-la,
-      // então o padrão do conteúdo vira um "contém" dentro da captura.
-      if (d.includes("/")) {
-        // Escapa caracteres especiais de regex, exceto já escapados
-        const escaped = d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return {
-          id: RULESET_ID_BASE + idx,
-          priority: 1,
-          action: {
-            type: "redirect",
-            redirect: {
-              regexSubstitution: substituicaoDeIntercepcao(mode, dominio),
-            },
-          },
-          condition: {
-            regexFilter: `^(https?://.*${escaped}.*)$`,
-            resourceTypes: ["main_frame"],
-          },
-        };
-      }
-      // Entradas sem "/" são domínios puros — bloqueia o domínio inteiro.
-      // requestDomains faz o casamento do domínio (confiável, inclui subdomínios)
-      // e o regexFilter existe só para capturar a URL na substituição.
-      return {
-        id: RULESET_ID_BASE + idx,
+    if (dominios.length) {
+      newRules.push({
+        id: RULESET_ID_BASE,
         priority: 1,
         action: {
           type: "redirect",
-          redirect: {
-            regexSubstitution: substituicaoDeIntercepcao(mode, dominio),
-          },
+          redirect: { regexSubstitution: substituicaoDeIntercepcao(mode) },
         },
         condition: {
-          requestDomains: [d],
+          requestDomains: dominios,
           regexFilter: CAPTURA_URL_COMPLETA,
           resourceTypes: ["main_frame"],
         },
-      };
+      });
+    }
+
+    // Entradas com "/" são padrões de URL específicos (ex: youtube.com/watch?v=abc).
+    padroes.slice(0, limiteRegex).forEach((d, idx) => {
+      const escaped = d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      newRules.push({
+        id: RULESET_ID_BASE + 1 + idx,
+        priority: 1,
+        action: {
+          type: "redirect",
+          redirect: { regexSubstitution: substituicaoDeIntercepcao(mode, d.split("/")[0]) },
+        },
+        condition: {
+          regexFilter: `^(https?://.*${escaped}.*)$`,
+          resourceTypes: ["main_frame"],
+        },
+      });
     });
   }
 
   if (newRules.length > 0) {
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [],
-      addRules: newRules,
-    });
-    console.log("[Guardian DNR] Aplicadas", newRules.length, "regras");
+    try {
+      await chrome.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: [],
+        addRules: newRules,
+      });
+      console.log("[Guardian DNR] Aplicadas", newRules.length, "regras");
+    } catch (e) {
+      console.error("[Guardian DNR] Chrome recusou as regras:", e?.message || e);
+      throw e;
+    }
   }
 }
 
