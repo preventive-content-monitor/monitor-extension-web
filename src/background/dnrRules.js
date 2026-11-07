@@ -78,6 +78,9 @@ export async function syncBlocklistToDNR(
     addRules: [],
   });
 
+  // "Continuar mesmo assim" só existe no modo Avisar; no Bloquear não pode furar a regra.
+  if (mode !== "WARN") await limparBypassDNR();
+
   // Se estiver desabilitado, para aqui (sem adicionar nada)
   if (!enabled) {
     console.log("[Guardian DNR] Proteção desabilitada");

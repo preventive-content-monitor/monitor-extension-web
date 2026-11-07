@@ -39,6 +39,7 @@ const warnBypassSet = new Set();
 
 // ================== PROTEÇÃO CONTRA BURLA ==================
 const HEARTBEAT_ALARM = "guardian-heartbeat";
+const POLICY_ALARM = "guardian-policy-sync";
 const SETTINGS_LOCK_ALARM = "guardian-settings-lock";
 const UNLOCK_MS = 5 * 60 * 1000;
 const tabsBeingProtected = new Set();
@@ -97,7 +98,33 @@ async function enviarSinalDeVida() {
 
 function agendarSinalDeVida() {
   chrome.alarms.create(HEARTBEAT_ALARM, { delayInMinutes: 0.1, periodInMinutes: 5 });
+  // O setInterval morre quando o Chrome adormece o service worker; o alarme o acorda.
+  chrome.alarms.create(POLICY_ALARM, { periodInMinutes: 0.5 });
 }
+
+async function _sincronizarEAplicarPolitica() {
+  const policy = await syncPolicy();
+  if (!policy) return null;
+  const s3Blocked = await getS3Blacklist();
+  const allBlocked = [...new Set([...(policy.blockedDomains || []), ...s3Blocked])];
+  await _redirectOpenBlockedTabs(allBlocked, policy.mode || "BLOCK");
+  return policy;
+}
+
+function _checarAba(tabId, url) {
+  if (!url || !/^https?:\/\//i.test(url)) return;
+  try {
+    _verificarEBloquearUrl(url, new URL(url).hostname, tabId);
+  } catch {}
+}
+
+// Pega navegações que o DNR não vê (página servida do cache/service worker do site, voltar/avançar).
+chrome.webNavigation.onCommitted.addListener((d) => {
+  if (d.frameId === 0) _checarAba(d.tabId, d.url);
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs.get(tabId).then((t) => _checarAba(tabId, t.url)).catch(() => {});
+});
 
 /** O instalador atualiza os arquivos da pasta; se a versão no disco mudou, recarrega a extensão. */
 async function _recarregarSeAtualizada() {
@@ -115,6 +142,9 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === HEARTBEAT_ALARM) {
     _recarregarSeAtualizada();
     enviarSinalDeVida();
+  }
+  if (alarm.name === POLICY_ALARM) {
+    _sincronizarEAplicarPolitica().catch((e) => console.warn("[Guardian] Policy alarm falhou:", e?.message || e));
   }
   if (alarm.name === SETTINGS_LOCK_ALARM) {
     chrome.storage.session.remove(["unlockedUntil"])
@@ -329,8 +359,8 @@ async function _redirectOpenBlockedTabs(blockedDomains, mode) {
 
         const host = new URL(u).hostname.replace(/^www\./i, "").toLowerCase();
 
-        // Bypass de sessão
-        if (warnBypassSet.has(host)) continue;
+        // Bypass de sessão (só vale no modo Avisar)
+        if (policyMode === "WARN" && warnBypassSet.has(host)) continue;
 
         const match = blockedDomains.find(
           (d) => host === d || host.endsWith("." + d),
@@ -650,7 +680,7 @@ async function _verificarEBloquearUrl(url, hostname, tabId) {
     const h = hostname.replace(/^www\./i, "").toLowerCase();
 
     // Verifica bypass de sessão (usuário optou por continuar em WARN)
-    if (warnBypassSet.has(h)) return;
+    if (mode === "WARN" && warnBypassSet.has(h)) return;
 
     const match = blocked.find((entry) => {
       if (entry.includes("/")) {
