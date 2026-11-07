@@ -61,6 +61,13 @@ async function _protecaoPost(path, body) {
   return await resp.json();
 }
 
+/** A aba anônima está protegida se a extensão tem acesso a ela ou se o arquivo de proteção a desativou. */
+async function _anonimoProtegido() {
+  if (await chrome.extension.isAllowedIncognitoAccess().catch(() => false)) return true;
+  const { anonimoBloqueado } = await chrome.storage.managed.get(["anonimoBloqueado"]).catch(() => ({}));
+  return anonimoBloqueado === true || anonimoBloqueado === 1;
+}
+
 /** Sinal de vida: informa o servidor e arma a URL que denuncia a remoção da extensão. */
 async function enviarSinalDeVida() {
   if (!(await isEnrolled())) {
@@ -68,7 +75,7 @@ async function enviarSinalDeVida() {
     return;
   }
   try {
-    const anonimoPermitido = await chrome.extension.isAllowedIncognitoAccess();
+    const anonimoPermitido = await _anonimoProtegido();
     const data = await _protecaoPost("/api/protecao/sinal", {
       versao: chrome.runtime.getManifest().version,
       anonimoPermitido,
@@ -153,6 +160,9 @@ async function _protegerAbasAbertas() {
 }
 
 chrome.tabs.onCreated.addListener(_protegerAbaDoNavegador);
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "managed" && changes.anonimoBloqueado) enviarSinalDeVida();
+});
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === "complete") {
     _protegerAbaDoNavegador(tab);
@@ -801,7 +811,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             installed: true,
             version: chrome.runtime.getManifest().version,
             browserProtection: true,
-            anonimoPermitido: await chrome.extension.isAllowedIncognitoAccess().catch(() => false),
+            incognitoPolicy: true,
+            anonimoPermitido: await _anonimoProtegido(),
             scopedEnrollment: true,
             enrolled: info.isEnrolled,
             requiresAuthorization: info.needsAuthorization,
@@ -971,7 +982,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           enrolled: info.isEnrolled,
           locked: info.isEnrolled && !(await _estaDesbloqueado()),
           palavraChaveDefinida: palavraChaveDefinida !== false,
-          anonimoPermitido: await chrome.extension.isAllowedIncognitoAccess().catch(() => anonimoPermitido),
+          anonimoPermitido: await _anonimoProtegido().catch(() => anonimoPermitido),
           dependentNickname: info.dependentNickname,
         });
         return;

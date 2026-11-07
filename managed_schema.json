@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "anonimoBloqueado": {
+      "title": "Aba anônima desativada pelo arquivo de proteção do GuardIAn",
+      "type": "boolean"
+    }
+  }
+}
