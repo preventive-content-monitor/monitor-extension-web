@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy0f6F8K4x7sCyzM0z1hq0H+I/pc5xr3G1PSarLwcTswlr0Hnv7/XJ/Al+9ZwIQcZyUhVInF3nAUWVjNLupGZxPzKPWtYy6z65u7zR9403TC11fe+uINUfGyNzJU/nNpgW43UUJ1SL0JhmYc88/l3gIP4WsJanDyYccF4qYnBGbk3MPq4LSdm3yKgy81oR7Ioq5Y1zpq2Kc4keb25UwoGZjf1Z1RP3BmkBlOIIoHzKZxXLWmYbetfXXuyJJRGWWsBp/BB3aDjC1RhpNePS1oILOyTCqhq6B3SVj77lUsPJnWjeFlv/wXlQt3mRsq0DaV8qqekDExTFiToTJ34eAb4AwIDAQAB",
-  "name": "Guardian - ProteÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o Familiar",
-  "version": "0.6.4",
-  "description": "ProteÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o digital para crianÃƒÆ’Ã‚Â§as e adolescentes. Monitora e filtra conteÃƒÆ’Ã‚Âºdo imprÃƒÆ’Ã‚Â³prio.",
+  "name": "Guardian - Proteção Familiar",
+  "version": "0.6.5",
+  "description": "Proteção digital para crianças e adolescentes. Monitora e filtra conteúdo impróprio.",
   "action": {
     "default_title": "Guardian",
     "default_popup": "src/options/options.html?popup=1"
