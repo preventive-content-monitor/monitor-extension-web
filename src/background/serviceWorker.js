@@ -99,8 +99,23 @@ function agendarSinalDeVida() {
   chrome.alarms.create(HEARTBEAT_ALARM, { delayInMinutes: 0.1, periodInMinutes: 5 });
 }
 
+/** O instalador atualiza os arquivos da pasta; se a versão no disco mudou, recarrega a extensão. */
+async function _recarregarSeAtualizada() {
+  try {
+    const resp = await fetch(chrome.runtime.getURL("manifest.json"), { cache: "no-store" });
+    const versaoNoDisco = (await resp.json())?.version;
+    if (versaoNoDisco && versaoNoDisco !== chrome.runtime.getManifest().version) chrome.runtime.reload();
+  } catch (error) {
+    console.warn("[Guardian] Não foi possível verificar atualização:", error?.message || error);
+  }
+}
+_recarregarSeAtualizada();
+
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === HEARTBEAT_ALARM) enviarSinalDeVida();
+  if (alarm.name === HEARTBEAT_ALARM) {
+    _recarregarSeAtualizada();
+    enviarSinalDeVida();
+  }
   if (alarm.name === SETTINGS_LOCK_ALARM) {
     chrome.storage.session.remove(["unlockedUntil"])
       .then(_protegerAbasAbertas)
