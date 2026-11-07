@@ -60,7 +60,7 @@ monitor-extension-web/
 1. Na landing do GuardIAn, abra **Instalar extensão** e baixe o pacote ZIP
 2. Extraia o ZIP em uma pasta permanente do computador
 3. Instale a extensão em modo desenvolvedor no Chrome ou Edge do dependente
-4. Na página de extensões, abra **Detalhes** do GuardIAn e ative **Permitir no modo anônimo** (Chrome) ou **Permitir em InPrivate** (Edge). O navegador exige essa permissão manual; sem ela, a extensão não consegue ver nem fechar abas anônimas.
+4. Na página de extensões, clique em **Saiba mais** no GuardIAn e ative **Permitir no modo anônimo** (Chrome) ou **Permitir em InPrivate** (Edge). O navegador exige essa permissão manual; sem ela, a extensão não consegue ver nem fechar abas anônimas.
 5. Volte ao GuardIAn. Clique no ícone da extensão na barra do navegador (ou em 🧩 → Guardian), entre com as credenciais do responsável (`email` + `senha`) e insira o **código de vínculo** gerado no painel (válido 5 minutos)
 6. Clique em **Conectar**. Depois do vínculo, a extensão fecha abas anônimas e protege as páginas de extensões e de restauração do navegador enquanto estiver bloqueada.
 
