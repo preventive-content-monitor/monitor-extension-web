@@ -311,8 +311,8 @@ async function handleConnect() {
     return;
   }
 
-  if (keywordRequired) {
-    const palavra = $("#newKeyword").value.trim();
+  const palavra = $("#newKeyword").value.trim();
+  if (keywordRequired && (palavra || $("#newKeywordConfirm").value.trim())) {
     if (palavra.length < 4) {
       errorEl.textContent = "A palavra-chave precisa ter pelo menos 4 letras.";
       $("#newKeyword").focus();
