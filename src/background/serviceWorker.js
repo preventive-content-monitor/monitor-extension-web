@@ -5,6 +5,7 @@ import {
   clearEnrollment,
   getEnrollmentInfo,
   generateDeviceName,
+  ensureComputerId,
 } from "./deviceIdentity.js";
 import { getSettings } from "./policyStore.js";
 import { enqueueEvent, readQueue, acknowledgeEvents } from "./eventQueue.js";
@@ -758,6 +759,7 @@ async function enrollThisBrowser(code, deviceName, token) {
     deviceName || generateDeviceName(),
     baseUrl,
     token,
+    await ensureComputerId(),
   );
   const warning = await initializeEnrolledMonitoring();
   await _protegerAbasAbertas();
@@ -866,6 +868,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
 
+        if (msg.action === "COMPUTER_ID") {
+          sendResponse({ trusted: true, id: await ensureComputerId(msg.id) });
+          return;
+        }
+
         if (msg.action === "ENROLL") {
           const code = String(msg.code || "").trim().toLowerCase();
           if (!code) {
@@ -873,6 +880,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             return;
           }
           try {
+            if (msg.computerId) await ensureComputerId(msg.computerId);
             const result = await enrollThisBrowser(code, null, msg.token);
             sendResponse({ trusted: true, ok: true, ...result });
           } catch (e) {

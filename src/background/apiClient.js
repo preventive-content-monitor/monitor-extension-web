@@ -206,14 +206,14 @@ export async function postEventsBatch(deviceId, events, baseUrl) {
  * Vincula dispositivo usando código de enrollment
  * POST /api/dispositivos/vincular
  */
-export async function enrollDevice(code, deviceName, baseUrl, token) {
+export async function enrollDevice(code, deviceName, baseUrl, token, computerId = null) {
   const url = buildUrl(baseUrl, "/api/dispositivos/vincular");
   if (!token) throw new Error("Confirme a conta do responsável antes de vincular.");
 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ codigo: code, nomeDispositivo: deviceName }),
+    body: JSON.stringify({ codigo: code, nomeDispositivo: deviceName, computadorId: computerId }),
   });
 
   if (!res.ok) {

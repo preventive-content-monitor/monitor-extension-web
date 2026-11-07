@@ -13,8 +13,24 @@
       .catch(() => null);
   }
 
-  ask("PING").then((res) => {
-    if (res?.trusted) post({ type: "READY", status: res });
+  // Identidade do computador: fica no localStorage do site GuardIAn, que continua no Chrome
+  // mesmo se a extensão for removida. Assim a reinstalação reaproveita o mesmo cadastro.
+  const CID_KEY = "guardian.computadorId";
+  function readCid() {
+    try { return localStorage.getItem(CID_KEY); } catch { return null; }
+  }
+  async function syncCid() {
+    const res = await ask("COMPUTER_ID", { id: readCid() });
+    if (res?.trusted && res.id) {
+      try { localStorage.setItem(CID_KEY, res.id); } catch {}
+    }
+    return res?.id || null;
+  }
+
+  ask("PING").then(async (res) => {
+    if (!res?.trusted) return;
+    await syncCid();
+    post({ type: "READY", status: res });
   });
 
   window.addEventListener("message", async (event) => {
@@ -29,7 +45,8 @@
     }
 
     if (msg.type === "ENROLL") {
-      const res = await ask("ENROLL", { code: msg.code, token: msg.token });
+      const computerId = await syncCid();
+      const res = await ask("ENROLL", { code: msg.code, token: msg.token, computerId });
       if (res?.trusted) post({ type: "ENROLL_RESULT", requestId: msg.requestId, result: res });
     }
   });

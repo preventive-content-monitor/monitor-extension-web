@@ -14,14 +14,31 @@ export async function ensureDeviceId() {
 }
 
 /**
+ * Identidade do computador (perfil do Chrome). O site GuardIAn guarda uma cópia no
+ * localStorage, que sobrevive à remoção da extensão; a cópia do site prevalece.
+ */
+const COMPUTER_ID_RE = /^[A-Za-z0-9-]{16,64}$/;
+export async function ensureComputerId(fromSite) {
+  if (typeof fromSite === "string" && COMPUTER_ID_RE.test(fromSite)) {
+    await chrome.storage.local.set({ computerId: fromSite });
+    return fromSite;
+  }
+  const { computerId } = await chrome.storage.local.get(["computerId"]);
+  if (computerId) return computerId;
+  const novo = crypto.randomUUID();
+  await chrome.storage.local.set({ computerId: novo });
+  return novo;
+}
+
+/**
  * Vincula este dispositivo usando código do responsável
  * @param {string} code - Código de 6 caracteres gerado pelo responsável
  * @param {string} deviceName - Nome amigável do dispositivo
  * @param {string} baseUrl - URL do backend
  * @returns {Promise<{deviceId: string, dependentNickname: string}>}
  */
-export async function enrollWithCode(code, deviceName, baseUrl, token) {
-  const result = await apiEnroll(code, deviceName, baseUrl, token);
+export async function enrollWithCode(code, deviceName, baseUrl, token, computerId = null) {
+  const result = await apiEnroll(code, deviceName, baseUrl, token, computerId);
   if (!result.id || !result.tokenDispositivo) {
     throw new Error("O servidor não retornou a autorização do dispositivo.");
   }
